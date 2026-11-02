@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $Base = $PSScriptRoot
 $PidFile = Join-Path $Base 'bridge.pid'
 $LogFile = Join-Path $Base 'bridge.log'
-$Script = Join-Path $Base 'bot.py'
+$Arguments = @('-m', 'bridge.main')
 
 function Get-Running {
     if (-not (Test-Path $PidFile)) { return $null }
@@ -18,7 +18,7 @@ switch ($Action) {
     'start' {
         $running = Get-Running
         if ($running) { "already running (PID $($running.Id))"; break }
-        $proc = Start-Process -FilePath 'python' -ArgumentList @($Script) -WorkingDirectory $Base `
+        $proc = Start-Process -FilePath 'python' -ArgumentList $Arguments -WorkingDirectory $Base `
             -WindowStyle Hidden -PassThru -RedirectStandardOutput $LogFile -RedirectStandardError "$LogFile.err"
         $proc.Id | Set-Content $PidFile -Encoding ascii
         Start-Sleep -Seconds 2

@@ -41,7 +41,7 @@ cp .env.example .env
 3. Run:
 
 ```powershell
-python bot.py
+python -m bridge.main
 ```
 
 Or use the helper script (writes `bridge.log`, tracks the PID):
@@ -73,44 +73,45 @@ Or use the helper script (writes `bridge.log`, tracks the PID):
 ## Structure
 
 ```
-bot.py              entry point: Telegram polling loop, routing, streaming, menu
 config.py           .env loader and defaults
+start-bridge.ps1    start / stop / status / restart wrapper (runs `python -m bridge.main`)
 bridge/
-  container.py          composition root: shared state / guard / broker / registry instances
+  main.py               entry point: logging, context, routers, start the poller
+  container.py          composition root: builds Context (state, guard, brokers, services)
   core/errors.py        BridgeError hierarchy (safe user message + technical detail)
   core/models.py        shared models (SessionInfo, StreamResult, ...)
   core/ports/agent_engine.py  AgentEngine protocol every engine implements
   core/ports/state_repository.py  StateRepository protocol
-  application/services/busy_guard.py        atomic per-chat "task running" lock
-  application/services/permission_broker.py tool permission requests with TTL
-  infrastructure/persistence/json_state_repository.py  JSON state file, atomic writes
-  shared/logging_setup.py  logging configuration (stdout, start-bridge.ps1 compatible)
-  shared/error_boundary.py single error boundary: logs, notifies owner, never crashes a thread
-  shared/callback_registry.py  short callback keys -> payloads with TTL
-  infrastructure/telegram/
-    transport.py      HTTP to api.telegram.org, incl. IP fallback when DNS is blocked
-    client.py         Bot API calls: send / edit / action / answer
-    streamer.py       live message editing of streamed replies
-    typing_indicator.py  periodic "typing" action, stoppable via Event
-  infrastructure/engines/
-    registry.py       engine kind -> AgentEngine instance
-    opencode/http_client.py  `opencode api` calls (sessions, projects, models, permissions)
-    opencode/parser.py       message text/tool extraction
-    opencode/engine.py       OpenCodeEngine: polling stream + permission requests
-    qoder/cli_runner.py      run the Qoder CLI and parse its listings
-    qoder/history_log.py     transcript/history readers + local turn log
-    qoder/engine.py          QoderEngine: stream-json process + interrupt
+  application/
+    command_router.py       slash commands -> handlers table (fallback = prompt)
+    callback_router.py      inline-button data -> handlers table
+    session_service.py      SessionService / ProjectService over OpenCode
+    commands/               one file per command (help, status, projects, sessions, ...)
+    services/prompt_runner.py   run a prompt on the active engine + stream the reply
+    services/busy_guard.py      atomic per-chat "task running" lock
+    services/permission_broker.py tool permission requests with TTL
+  infrastructure/
+    telegram/transport.py   HTTP to api.telegram.org, incl. IP fallback when DNS is blocked
+    telegram/client.py      Bot API calls: send / edit / action / answer
+    telegram/poller.py      getUpdates loop; each update runs in a guarded thread
+    telegram/streamer.py    live message editing of streamed replies
+    telegram/typing_indicator.py  periodic "typing" action, stoppable via Event
+    engines/registry.py     engine kind -> AgentEngine instance
+    engines/opencode/...    OpenCodeEngine: sessions, projects, models, permissions
+    engines/qoder/...       QoderEngine: stream-json process, history, interrupt
+    persistence/json_state_repository.py  JSON state file, atomic writes
   presentation/
+    messenger.py      send text: escape + chunk + attach keyboard
+    screens.py        message rendering for projects, sessions, cards, history
     html_escape.py    the only place text is escaped for Telegram HTML
     markdown_to_html.py  Markdown -> Telegram HTML
     table_renderer.py    Markdown tables: monospace grid or per-row cards
     chunker.py        split long replies, keep code blocks/tables intact
     keyboards.py      inline keyboard builders
-engine/
-  projects.py       project/session listing for OpenCode
-  lifecycle.py      create/open/switch session helpers
-  screens.py        message rendering for projects, sessions, cards, history
-  actions.py        callback_data router (buttons)
+  shared/
+    logging_setup.py  logging configuration (stdout, start-bridge.ps1 compatible)
+    error_boundary.py single error boundary: logs, notifies owner, never crashes a thread
+    callback_registry.py  short callback keys -> payloads with TTL
 tests/              unit tests (unittest; mypy --strict config in pyproject.toml)
 ```
 

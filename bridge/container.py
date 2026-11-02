@@ -1,10 +1,46 @@
-"""Composition Root: النسخ المشتركة من الحالة والخدمات، في مكان واحد."""
+"""Composition Root: السياق الواحد الذي تمرّره معالجات الأوامر، وكل ما فيه جاهز."""
+from __future__ import annotations
+
+import config
 from bridge.application.services.busy_guard import BusyGuard
 from bridge.application.services.permission_broker import PermissionBroker
+from bridge.application.services.prompt_runner import PromptRunner
+from bridge.application.session_service import ProjectService, SessionService
+from bridge.infrastructure.engines.registry import get as get_engine
 from bridge.infrastructure.persistence.json_state_repository import JsonStateRepository
+from bridge.presentation.keyboards import Keyboards
+from bridge.presentation.messenger import Messenger
 from bridge.shared.callback_registry import CallbackRegistry
+from bridge.shared.error_boundary import ErrorBoundary
 
-state = JsonStateRepository()
-busy_guard = BusyGuard()
-permissions = PermissionBroker()
-callbacks = CallbackRegistry()
+
+class Engines:
+    """قراءة المحرّكات من السجل (بلا حالة هنا)."""
+
+    @staticmethod
+    def get(kind):
+        return get_engine(kind)
+
+
+class Context:
+    """كل تبعيات طبقة التطبيق: تُبنى مرة واحدة وتُحقن في كل معالج."""
+
+    def __init__(self, tg, owner, state_path=None):
+        self.tg = tg
+        self.owner = owner
+        self.messenger = Messenger(tg)
+        self.state = JsonStateRepository(state_path)
+        self.busy = BusyGuard()
+        self.permissions = PermissionBroker()
+        self.callbacks = CallbackRegistry()
+        self.boundary = ErrorBoundary(self._notify_owner)
+        self.engines = Engines()
+        self.sessions = SessionService(self.state, self.engines.get)
+        self.projects = ProjectService(self.engines.get)
+        self.keyboards = Keyboards()
+        self.runner = PromptRunner(self)
+
+    def _notify_owner(self, chat_id, text):
+        """إشعار الأخطاء للمالك فقط."""
+        if chat_id == self.owner:
+            self.messenger.send(chat_id, text)

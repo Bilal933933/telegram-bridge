@@ -1,4 +1,4 @@
-"""رسم شاشات المحاكاة كنص Markdown جاهز لتيليجرام."""
+"""رسم شاشات المحرّك كنص Markdown جاهز لتيليجرام."""
 import os
 import time
 
@@ -46,6 +46,29 @@ def clock(ms):
 
 
 # ---------- الشاشات ----------
+
+def engines_text(summary):
+    """سطران: آخر جلسة في كل محرّك، والنشط معلَّم."""
+    lines = []
+    for engine, label in (("opencode", "OpenCode"), ("qoder", "Qoder")):
+        item = summary[engine]
+        sid = item.get("oc_session") if engine == "opencode" else item.get("session_id")
+        mark = "▶️" if summary["active"] == engine else "▫️"
+        bits = [f"{mark} **{label}**", f"📁 {folder(item['workdir'])}"]
+        bits.append(f"💬 {sid[-8:] if sid else '—'}")
+        if item.get("model"):
+            bits.append(f"🧠 {item['model']}")
+        lines.append(" · ".join(bits))
+    return "\n".join(lines)
+
+
+def engine_picker(st, summary, name_qoder="Qoder"):
+    return (f"🔌 **المحرّك الحالي:** {st['src']}\n\n"
+            f"{engines_text(summary)}\n\n"
+            "• OpenCode — مشاريع وجلسات وبطاقة حالة\n"
+            f"• {name_qoder} — CLI مباشر بلا مشاريع\n"
+            "كل محرّك يحتفظ بمجلده وجلسته.")
+
 
 def projects_text(items):
     lines = [f"🗂 **المشاريع** — {len(items)}", ""]
@@ -151,7 +174,7 @@ def tail(ctx, limit=10, max_len=700):
 
 
 def history_entries(entries, limit=40):
-    """تاريخ محفوظ محليًا (Qoder) → نص تيليجرام."""
+    """تاريخ محفوظ (Qoder) → نص تيليجرام."""
     items = entries[-limit:] if limit else entries
     blocks = []
     for item in items:
