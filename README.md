@@ -75,14 +75,23 @@ Or use the helper script (writes `bridge.log`, tracks the PID):
 ```
 bot.py              entry point: Telegram polling loop, routing, streaming, menu
 config.py           .env loader and defaults
-telegram.py         raw Bot API client (sendMessage, edit, keyboards) + live Streamer
-formatting.py       Markdown -> Telegram HTML, table/grid rendering, chunking
 state.py            per-chat state in state.json (engine, workdir, session, model)
 opencode_api.py     small helper around the OpenCode REST API
 bridge/
   core/errors.py        BridgeError hierarchy (safe user message + technical detail)
   shared/logging_setup.py  logging configuration (stdout, start-bridge.ps1 compatible)
   shared/error_boundary.py single error boundary: logs, notifies owner, never crashes a thread
+  infrastructure/telegram/
+    transport.py      HTTP to api.telegram.org, incl. IP fallback when DNS is blocked
+    client.py         Bot API calls: send / edit / action / answer
+    streamer.py       live message editing of streamed replies
+    typing_indicator.py  periodic "typing" action, stoppable via Event
+  presentation/
+    html_escape.py    the only place text is escaped for Telegram HTML
+    markdown_to_html.py  Markdown -> Telegram HTML
+    table_renderer.py    Markdown tables: monospace grid or per-row cards
+    chunker.py        split long replies, keep code blocks/tables intact
+    keyboards.py      inline keyboard builders
 backends/
   opencode.py       OpenCode backend: sessions, models, agents, permission replies, streaming
   qoder.py          Qoder CLI backend: subprocess streaming, session list, local history log

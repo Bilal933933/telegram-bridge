@@ -8,11 +8,15 @@ import time
 import urllib.error
 
 import config
-import formatting
 import state
-import telegram as tg_mod
 from backends import opencode as oc
 from backends import qoder as qd
+from bridge.infrastructure.telegram.client import Telegram
+from bridge.infrastructure.telegram.streamer import Streamer
+from bridge.infrastructure.telegram.typing_indicator import start_typing
+from bridge.presentation.chunker import chunks
+from bridge.presentation.keyboards import kb
+from bridge.presentation.markdown_to_html import to_html
 from bridge.shared.error_boundary import ErrorBoundary
 from bridge.shared.logging_setup import configure_logging, get_logger
 from engine import actions as ui
@@ -21,8 +25,7 @@ from engine import lifecycle, registry, screens
 configure_logging()
 logger = get_logger("bot")
 
-TG = tg_mod.Telegram(config.TOKEN)
-kb = tg_mod.kb
+TG = Telegram(config.TOKEN)
 
 LAST_QODER = {}
 LAST_OC = {}
@@ -42,7 +45,7 @@ HELP = (
 
 
 def send(chat_id, text, keyboard=None):
-    parts = [formatting.to_html(c) for c in formatting.chunks(text or "…")]
+    parts = [to_html(c) for c in chunks(text or "…")]
     for idx, chunk in enumerate(parts):
         TG.send(chat_id, chunk, kb=keyboard if idx == len(parts) - 1 else None)
 
@@ -70,11 +73,6 @@ def spawn(chat_id, target, *args):
 
 def callback_chat_id(cq):
     return (cq.get("message") or {}).get("chat", {}).get("id")
-
-
-def typing(chat_id, stop_event):
-    while not stop_event.wait(4.5):
-        TG.action(chat_id, "typing")
 
 
 def is_busy(chat_id):
@@ -178,9 +176,8 @@ def show_history(chat_id, limit=40):
 
 def ask_qoder(chat_id, text):
     st = state.get(chat_id)
-    streamer = tg_mod.Streamer(TG, chat_id)
-    stop_event = threading.Event()
-    spawn(None, typing, chat_id, stop_event)
+    streamer = Streamer(TG, chat_id)
+    stop_event = start_typing(TG, chat_id)
     set_busy(chat_id, True)
     try:
         body, sid, error = qd.stream(
@@ -218,9 +215,8 @@ def ask_opencode(chat_id, text):
                  [{"text": "💬 جلسات المشروع", "callback_data": "sessions"}]]))
         return
 
-    streamer = tg_mod.Streamer(TG, chat_id)
-    stop_event = threading.Event()
-    spawn(None, typing, chat_id, stop_event)
+    streamer = Streamer(TG, chat_id)
+    stop_event = start_typing(TG, chat_id)
     set_busy(chat_id, True)
 
     def on_perm(req):
