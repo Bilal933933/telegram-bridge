@@ -79,6 +79,10 @@ telegram.py         raw Bot API client (sendMessage, edit, keyboards) + live Str
 formatting.py       Markdown -> Telegram HTML, table/grid rendering, chunking
 state.py            per-chat state in state.json (engine, workdir, session, model)
 opencode_api.py     small helper around the OpenCode REST API
+bridge/
+  core/errors.py        BridgeError hierarchy (safe user message + technical detail)
+  shared/logging_setup.py  logging configuration (stdout, start-bridge.ps1 compatible)
+  shared/error_boundary.py single error boundary: logs, notifies owner, never crashes a thread
 backends/
   opencode.py       OpenCode backend: sessions, models, agents, permission replies, streaming
   qoder.py          Qoder CLI backend: subprocess streaming, session list, local history log
@@ -88,6 +92,7 @@ engine/
   lifecycle.py      create/open/switch session helpers
   screens.py        message rendering for projects, sessions, cards, history
   actions.py        callback_data router (buttons)
+tests/              unit tests (unittest; mypy --strict config in pyproject.toml)
 ```
 
 ## Notes

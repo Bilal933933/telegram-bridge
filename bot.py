@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """بوت تيليجرام — واجهة موحّدة لمحرّكي Qoder و OpenCode."""
+import functools
 import os
 import pathlib
 import threading
@@ -12,8 +13,13 @@ import state
 import telegram as tg_mod
 from backends import opencode as oc
 from backends import qoder as qd
+from bridge.shared.error_boundary import ErrorBoundary
+from bridge.shared.logging_setup import configure_logging, get_logger
 from engine import actions as ui
 from engine import lifecycle, registry, screens
+
+configure_logging()
+logger = get_logger("bot")
 
 TG = tg_mod.Telegram(config.TOKEN)
 kb = tg_mod.kb
@@ -35,10 +41,6 @@ HELP = (
 )
 
 
-def log(msg):
-    print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}", flush=True)
-
-
 def send(chat_id, text, keyboard=None):
     parts = [formatting.to_html(c) for c in formatting.chunks(text or "…")]
     for idx, chunk in enumerate(parts):
@@ -46,6 +48,28 @@ def send(chat_id, text, keyboard=None):
 
 
 ui.bind(send, kb)
+
+
+def notify_error(chat_id, text):
+    """إشعار الخطأ للمالك فقط."""
+    if chat_id == config.OWNER:
+        send(chat_id, text)
+
+
+BOUNDARY = ErrorBoundary(notify_error)
+
+
+def spawn(chat_id, target, *args):
+    """يشغّل target في خيط خلفي داخل ErrorBoundary فلا يموت الخيط بصمت."""
+    threading.Thread(
+        target=BOUNDARY.run,
+        args=(chat_id, functools.partial(target, *args)),
+        daemon=True,
+    ).start()
+
+
+def callback_chat_id(cq):
+    return (cq.get("message") or {}).get("chat", {}).get("id")
 
 
 def typing(chat_id, stop_event):
@@ -156,7 +180,7 @@ def ask_qoder(chat_id, text):
     st = state.get(chat_id)
     streamer = tg_mod.Streamer(TG, chat_id)
     stop_event = threading.Event()
-    threading.Thread(target=typing, args=(chat_id, stop_event), daemon=True).start()
+    spawn(None, typing, chat_id, stop_event)
     set_busy(chat_id, True)
     try:
         body, sid, error = qd.stream(
@@ -165,6 +189,7 @@ def ask_qoder(chat_id, text):
             on_tool=lambda n, d: streamer.tool(n, d),
         )
     except Exception as exc:  # noqa: BLE001
+        logger.exception("qoder stream failed chat=%s", chat_id)
         body, sid, error = "", None, str(exc)
     finally:
         stop_event.set()
@@ -182,6 +207,7 @@ def ask_opencode(chat_id, text):
         try:
             sid = oc.create("تيليجرام", st["workdir"])
         except Exception as exc:  # noqa: BLE001
+            logger.exception("opencode create session failed chat=%s", chat_id)
             send(chat_id, f"⚠️ تعذر إنشاء جلسة:\n{exc}")
             return
         state.update(chat_id, oc_session=sid)
@@ -194,7 +220,7 @@ def ask_opencode(chat_id, text):
 
     streamer = tg_mod.Streamer(TG, chat_id)
     stop_event = threading.Event()
-    threading.Thread(target=typing, args=(chat_id, stop_event), daemon=True).start()
+    spawn(None, typing, chat_id, stop_event)
     set_busy(chat_id, True)
 
     def on_perm(req):
@@ -215,6 +241,7 @@ def ask_opencode(chat_id, text):
             on_permission=on_perm,
         )
     except Exception as exc:  # noqa: BLE001
+        logger.exception("opencode stream failed chat=%s", chat_id)
         body, error = "", str(exc)
     finally:
         stop_event.set()
@@ -366,13 +393,13 @@ def handle(chat_id, text):
         return
 
     if st["src"] == "opencode":
-        threading.Thread(target=ask_opencode, args=(chat_id, text), daemon=True).start()
+        spawn(chat_id, ask_opencode, chat_id, text)
     else:
-        threading.Thread(target=ask_qoder, args=(chat_id, text), daemon=True).start()
+        spawn(chat_id, ask_qoder, chat_id, text)
 
 
 def handle_callback(cq):
-    chat_id = (cq.get("message") or {}).get("chat", {}).get("id")
+    chat_id = callback_chat_id(cq)
     data = cq.get("data") or ""
     TG.answer(cq.get("id"))
     if chat_id != config.OWNER:
@@ -457,19 +484,11 @@ def handle_callback(cq):
             send(chat_id, f"⚠️ {exc}")
 
 
-def safe_handle(chat_id, text):
-    try:
-        handle(chat_id, text)
-    except Exception as exc:  # noqa: BLE001
-        log(f"handle error: {exc}")
-        send(chat_id, f"⚠️ خطأ داخلي: {exc}")
-
-
 def main():
     if not config.TOKEN or not config.OWNER:
-        log("BOT_TOKEN أو ALLOWED_ID مفقود في .env")
+        logger.error("BOT_TOKEN أو ALLOWED_ID مفقود في .env")
         return 1
-    log(f"بدء البوت | owner={config.OWNER} | dir={config.DEFAULT_DIR}")
+    logger.info("بدء البوت | owner=%s | dir=%s", config.OWNER, config.DEFAULT_DIR)
     offset = 0
     while True:
         try:
@@ -478,20 +497,20 @@ def main():
             for upd in res.get("result", []):
                 offset = upd["update_id"] + 1
                 if "callback_query" in upd:
-                    threading.Thread(target=handle_callback, args=(upd["callback_query"],),
-                                     daemon=True).start()
+                    cq = upd["callback_query"]
+                    spawn(callback_chat_id(cq), handle_callback, cq)
                     continue
                 msg = upd.get("message") or {}
                 chat_id = (msg.get("chat") or {}).get("id")
                 text = msg.get("text") or ""
                 if chat_id != config.OWNER or not text:
                     continue
-                threading.Thread(target=safe_handle, args=(chat_id, text), daemon=True).start()
+                spawn(chat_id, handle, chat_id, text)
         except urllib.error.HTTPError as exc:
-            log(f"HTTP {exc.code}")
+            logger.warning("getUpdates HTTP %s", exc.code)
             time.sleep(5)
-        except Exception as exc:  # noqa: BLE001
-            log(f"loop error: {exc}")
+        except Exception:  # noqa: BLE001
+            logger.exception("loop error")
             time.sleep(5)
 
 
