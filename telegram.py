@@ -1,5 +1,13 @@
-"""عميل Bot API: إرسال/تعديل/أزرار + بث لحظي بتعديل الرسائل."""
+"""عميل Bot API: إرسال/تعديل/أزرار + بث لحظي بتعديل الرسائل.
+
+بعض مزوّدي الإنترنت يحجبون عنوان api.telegram.org من الـ DNS. لذلك إذا فشل
+الاتصال العادي نجرّب عناوين تيليجرام المعروفة مع إبقاء اسم النطاق (SNI)،
+ثم نتذكّر أول عنوان ناجح لبقية الجلسة.
+"""
+import http.client
 import json
+import socket
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -8,34 +16,90 @@ import urllib.request
 import config
 import formatting
 
+HOST = "api.telegram.org"
+FALLBACK_IPS = ("149.154.167.220", "149.154.175.50", "149.154.175.100")
+PIN = {"ip": None}
+SSL_CTX = ssl.create_default_context()
+
+
+class _PinnedHTTPS(http.client.HTTPSConnection):
+    """اتصال بعنوان IP ثابت مع SNI باسم api.telegram.org."""
+
+    def __init__(self, ip, timeout):
+        super().__init__(ip, 443, timeout=timeout, context=SSL_CTX)
+
+    def connect(self):
+        sock = socket.create_connection((self.host, self.port), self.timeout)
+        self.sock = self._context.wrap_socket(sock, server_hostname=HOST)
+
+
+def _post(path, data, timeout, ip=None):
+    """→ (status, body bytes)؛ لا يرفع استثناءً على أخطاء HTTP."""
+    if ip:
+        conn = _PinnedHTTPS(ip, timeout)
+        try:
+            conn.request("POST", path, body=data,
+                         headers={"Host": HOST,
+                                  "Content-Type": "application/x-www-form-urlencoded"})
+            resp = conn.getresponse()
+            return resp.status, resp.read()
+        finally:
+            conn.close()
+    req = urllib.request.Request("https://" + HOST + path, data=data)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read()
+
 
 class Telegram:
     def __init__(self, token):
         self.base = f"https://api.telegram.org/bot{token}/"
+        self.path = f"/bot{token}/"
+
+    def _send_raw(self, method, data, timeout):
+        path = self.path + method
+        if PIN["ip"]:
+            try:
+                return _post(path, data, timeout, ip=PIN["ip"])
+            except OSError:  # انقطع العنوان المثبّت → أعد الاكتشاف
+                PIN["ip"] = None
+        try:
+            return _post(path, data, min(timeout, 12))
+        except OSError:
+            pass
+        for ip in FALLBACK_IPS:
+            try:
+                status, body = _post(path, data, timeout, ip=ip)
+            except OSError:
+                continue
+            PIN["ip"] = ip
+            return status, body
+        raise OSError("تعذّر الوصول إلى api.telegram.org")
 
     def call(self, method, **params):
         data = urllib.parse.urlencode(params).encode()
         for attempt in range(3):
-            try:
-                req = urllib.request.Request(self.base + method, data=data)
-                with urllib.request.urlopen(req, timeout=70) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
-            except urllib.error.HTTPError as exc:
-                body = exc.read().decode("utf-8", "replace")
-                if exc.code == 429:
-                    try:
-                        wait = json.loads(body)["parameters"]["retry_after"]
-                    except Exception:  # noqa: BLE001
-                        wait = 3
-                    time.sleep(min(wait, 30))
-                    continue
-                if "message is not modified" in body:
-                    return {"ok": True}
-                if "can't parse entities" in body:
-                    raise ValueError("parse")
-                if attempt == 2:
-                    raise
-                time.sleep(1)
+            status, raw = self._send_raw(method, data, 70)
+            body = raw.decode("utf-8", "replace")
+            if status == 200:
+                return json.loads(body)
+            if status == 429:
+                try:
+                    wait = json.loads(body)["parameters"]["retry_after"]
+                except Exception:  # noqa: BLE001
+                    wait = 3
+                time.sleep(min(wait, 30))
+                continue
+            if "message is not modified" in body:
+                return {"ok": True}
+            if "can't parse entities" in body:
+                raise ValueError("parse")
+            if attempt == 2:
+                raise urllib.error.HTTPError(self.base + method, status, body[:200],
+                                             None, None)
+            time.sleep(1)
         return {}
 
     def send(self, chat_id, text, kb=None, html=True):

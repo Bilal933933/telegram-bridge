@@ -146,9 +146,8 @@ def show_history(chat_id, limit=40):
     if not sid:
         send(chat_id, "لا جلسة Qoder مفتوحة — أرسل /sessions.")
         return
-    text = screens.history_entries(qd.read_history(sid, limit))
-    send(chat_id, text or "لا رسائل محفوظة لهذه الجلسة بعد.\n"
-                          "(Qoder لا يخزّن نص المحادثات على القرص — نسجّل فقط ما يُرسل عبر البوت.)")
+    text = screens.history_entries(qd.read_messages(sid, limit))
+    send(chat_id, text or "لا رسائل في هذه الجلسة بعد.")
 
 
 # ---------- تشغيل ----------
@@ -415,10 +414,9 @@ def handle_callback(cq):
         if sid:
             state.update(chat_id, session_id=sid)
             send(chat_id, screens.qoder_card(state.get(chat_id), sid))
-            text = screens.history_entries(qd.read_history(sid, 10))
+            text = screens.history_entries(qd.read_messages(sid, 10))
             send(chat_id, ("📜 **آخر الرسائل**\n\n" + text) if text else
-                 "📜 لا رسائل محفوظة لهذه الجلسة.\n"
-                 "Qoder لا يخزّن نص المحادثة محليًا — تُسجَّل الرسائل التي تُرسل عبر البوت.")
+                 "📜 لا رسائل في هذه الجلسة بعد.")
 
     elif data.startswith("ocopen:"):
         idx = data.split(":", 1)[1]
