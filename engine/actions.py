@@ -1,8 +1,8 @@
 """أوامر وأزرار الشاشات: مشاريع ← مشروع ← جلسة، ووكلاء/نماذج/تاريخ."""
-import state
+from bridge.container import callbacks, state
 from bridge.infrastructure.engines.registry import get as get_engine
 
-from . import lifecycle, projects, registry, screens
+from . import lifecycle, projects, screens
 
 
 def _engine():
@@ -34,23 +34,23 @@ def show_projects(chat_id):
         return
     rows = []
     for p in items[:10]:
-        key = registry.put({"dir": p["dir"], "pid": p["id"]})
+        key = callbacks.put({"dir": p["dir"], "pid": p["id"]})
         rows.append([{"text": f"📁 {screens.folder(p['dir'])} · {screens.ago(p['active'])}",
                       "callback_data": f"pr:{key}"}])
     _out(chat_id, note + screens.projects_text(items), rows)
 
 
 def show_project(chat_id, key):
-    data = registry.get(key)
+    data = callbacks.get(key)
     if not data:
         _out(chat_id, "انتهت صلاحية الشاشة — أرسل /projects.")
         return
     directory = data["dir"]
     sessions = projects.sessions(directory, 20)
-    pkey = registry.put({"dir": directory, "pid": data.get("pid")})
+    pkey = callbacks.put({"dir": directory, "pid": data.get("pid")})
     rows = []
     for i, s in enumerate(sessions[:8], 1):
-        skey = registry.put({"sid": s["id"], "dir": directory, "pkey": pkey})
+        skey = callbacks.put({"sid": s["id"], "dir": directory, "pkey": pkey})
         rows.append([{"text": f"{i}. {s['title'][:30]} · {screens.ago(s['updated'])}",
                       "callback_data": f"ps:{skey}"}])
     rows.append([{"text": "🆕 جلسة جديدة", "callback_data": f"pn:{pkey}"}])
@@ -59,7 +59,7 @@ def show_project(chat_id, key):
 
 
 def new_session(chat_id, pkey):
-    data = registry.get(pkey) or {}
+    data = callbacks.get(pkey) or {}
     directory = data.get("dir") or state.get(chat_id)["workdir"]
     try:
         sid = lifecycle.create(chat_id, directory, screens.folder(directory))
@@ -73,7 +73,7 @@ def new_session(chat_id, pkey):
 # ---------- الجلسة ----------
 
 def show_session(chat_id, key):
-    data = registry.get(key)
+    data = callbacks.get(key)
     if not data:
         _out(chat_id, "انتهت صلاحية الشاشة — أرسل /sessions أو /projects.")
         return
@@ -88,7 +88,7 @@ def show_session(chat_id, key):
         pending = len(_engine().permissions(sid))
     except Exception:  # noqa: BLE001
         pending = 0
-    skey = registry.put({"sid": sid, "dir": data.get("dir"), "pkey": data.get("pkey")})
+    skey = callbacks.put({"sid": sid, "dir": data.get("dir"), "pkey": data.get("pkey")})
     rows = [
         [{"text": "📜 كل الرسائل", "callback_data": "hist"},
          {"text": "🔄 تحديث", "callback_data": f"ps:{skey}"}],
@@ -145,13 +145,13 @@ def show_agents(chat_id):
         return
     rows = []
     for a in items:
-        key = registry.put({"sid": sid, "agent": a["id"]})
+        key = callbacks.put({"sid": sid, "agent": a["id"]})
         rows.append([{"text": a["name"], "callback_data": f"agx:{key}"}])
     _out(chat_id, "🤖 **الوكيل** — اختر (مثل Tab في البرنامج):", rows)
 
 
 def set_agent(chat_id, key):
-    data = registry.get(key)
+    data = callbacks.get(key)
     if not data:
         _out(chat_id, "انتهت صلاحية الاختيار — أرسل /agent.")
         return
@@ -181,13 +181,13 @@ def show_models(chat_id, query=""):
             return
     rows = []
     for m in items[:10]:
-        key = registry.put({"sid": sid, "model": m["id"], "provider": m["provider"]})
+        key = callbacks.put({"sid": sid, "model": m["id"], "provider": m["provider"]})
         rows.append([{"text": m["name"][:40], "callback_data": f"mdx:{key}"}])
     _out(chat_id, f"🧠 **النموذج** — {len(items)} متاح:", rows)
 
 
 def set_model(chat_id, key):
-    data = registry.get(key)
+    data = callbacks.get(key)
     if not data:
         _out(chat_id, "انتهت صلاحية الاختيار — أرسل /model.")
         return

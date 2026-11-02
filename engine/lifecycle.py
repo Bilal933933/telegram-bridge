@@ -1,5 +1,5 @@
 """دورة حياة جلسة OpenCode: فتح/إنشاء/حالة — كما يفعل البرنامج الحقيقي."""
-import state
+from bridge.container import state
 from bridge.infrastructure.engines.registry import get as get_engine
 
 

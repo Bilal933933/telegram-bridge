@@ -75,13 +75,18 @@ Or use the helper script (writes `bridge.log`, tracks the PID):
 ```
 bot.py              entry point: Telegram polling loop, routing, streaming, menu
 config.py           .env loader and defaults
-state.py            per-chat state in state.json (engine, workdir, session, model)
 bridge/
+  container.py          composition root: shared state / guard / broker / registry instances
   core/errors.py        BridgeError hierarchy (safe user message + technical detail)
   core/models.py        shared models (SessionInfo, StreamResult, ...)
   core/ports/agent_engine.py  AgentEngine protocol every engine implements
+  core/ports/state_repository.py  StateRepository protocol
+  application/services/busy_guard.py        atomic per-chat "task running" lock
+  application/services/permission_broker.py tool permission requests with TTL
+  infrastructure/persistence/json_state_repository.py  JSON state file, atomic writes
   shared/logging_setup.py  logging configuration (stdout, start-bridge.ps1 compatible)
   shared/error_boundary.py single error boundary: logs, notifies owner, never crashes a thread
+  shared/callback_registry.py  short callback keys -> payloads with TTL
   infrastructure/telegram/
     transport.py      HTTP to api.telegram.org, incl. IP fallback when DNS is blocked
     client.py         Bot API calls: send / edit / action / answer
@@ -102,7 +107,6 @@ bridge/
     chunker.py        split long replies, keep code blocks/tables intact
     keyboards.py      inline keyboard builders
 engine/
-  registry.py       short callback keys -> payloads with TTL
   projects.py       project/session listing for OpenCode
   lifecycle.py      create/open/switch session helpers
   screens.py        message rendering for projects, sessions, cards, history

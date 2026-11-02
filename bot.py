@@ -8,7 +8,7 @@ import time
 import urllib.error
 
 import config
-import state
+from bridge.container import busy_guard, callbacks, permissions, state
 from bridge.infrastructure.engines.registry import get as get_engine
 from bridge.infrastructure.telegram.client import Telegram
 from bridge.infrastructure.telegram.streamer import Streamer
@@ -19,7 +19,7 @@ from bridge.presentation.markdown_to_html import to_html
 from bridge.shared.error_boundary import ErrorBoundary
 from bridge.shared.logging_setup import configure_logging, get_logger
 from engine import actions as ui
-from engine import lifecycle, registry, screens
+from engine import lifecycle, screens
 
 configure_logging()
 logger = get_logger("bot")
@@ -28,10 +28,6 @@ TG = Telegram(config.TOKEN)
 
 LAST_QODER = {}
 LAST_OC = {}
-PERMS = {}
-PERM_SEQ = [0]
-BUSY = {}
-LOCK = threading.Lock()
 
 HELP = (
     "👋 **كيف يعمل**\n\n"
@@ -75,12 +71,7 @@ def callback_chat_id(cq):
 
 
 def is_busy(chat_id):
-    return BUSY.get(chat_id, False)
-
-
-def set_busy(chat_id, value):
-    with LOCK:
-        BUSY[chat_id] = value
+    return busy_guard.is_busy(chat_id)
 
 
 def menu_kb():
@@ -117,7 +108,7 @@ def engines_text(chat_id):
 def show_sessions(chat_id):
     st = state.get(chat_id)
     if st["src"] == "opencode":
-        ui.show_project(chat_id, registry.put({"dir": st["workdir"]}))
+        ui.show_project(chat_id, callbacks.put({"dir": st["workdir"]}))
         return
 
     items = get_engine("qoder").list_sessions(st["workdir"])
@@ -174,79 +165,79 @@ def show_history(chat_id, limit=40):
 # ---------- تشغيل ----------
 
 def ask_qoder(chat_id, text):
-    st = state.get(chat_id)
-    engine = get_engine("qoder")
-    streamer = Streamer(TG, chat_id)
-    stop_event = start_typing(TG, chat_id)
-    set_busy(chat_id, True)
     try:
-        result = engine.stream(
-            text, session_id=st["session_id"], workdir=st["workdir"],
-            model=st["model"],
-            on_delta=lambda t: streamer.update(t),
-            on_tool=lambda n, d: streamer.tool(n, d),
-        )
-        body, sid, error = result.text, result.session_id, result.error
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("qoder stream failed chat=%s", chat_id)
-        body, sid, error = "", None, str(exc)
+        st = state.get(chat_id)
+        engine = get_engine("qoder")
+        streamer = Streamer(TG, chat_id)
+        stop_event = start_typing(TG, chat_id)
+        try:
+            result = engine.stream(
+                text, session_id=st["session_id"], workdir=st["workdir"],
+                model=st["model"],
+                on_delta=lambda t: streamer.update(t),
+                on_tool=lambda n, d: streamer.tool(n, d),
+            )
+            body, sid, error = result.text, result.session_id, result.error
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("qoder stream failed chat=%s", chat_id)
+            body, sid, error = "", None, str(exc)
+        finally:
+            stop_event.set()
+        if sid and sid != st["session_id"]:
+            state.update(chat_id, session_id=sid)
+        engine.log_turn(sid or st["session_id"], text, body, error)
+        streamer.finish(body or (f"⚠️ {error}" if error else "(لا مخرجات)"))
     finally:
-        stop_event.set()
-        set_busy(chat_id, False)
-    if sid and sid != st["session_id"]:
-        state.update(chat_id, session_id=sid)
-    engine.log_turn(sid or st["session_id"], text, body, error)
-    streamer.finish(body or (f"⚠️ {error}" if error else "(لا مخرجات)"))
+        busy_guard.release(chat_id)
 
 
 def ask_opencode(chat_id, text):
-    st = state.get(chat_id)
-    engine = get_engine("opencode")
-    sid = st["oc_session"]
-    if not sid:
-        try:
-            sid = engine.create_session(st["workdir"], "تيليجرام")
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("opencode create session failed chat=%s", chat_id)
-            send(chat_id, f"⚠️ تعذر إنشاء جلسة:\n{exc}")
-            return
-        state.update(chat_id, oc_session=sid)
-    if engine.is_active(sid):
-        send(chat_id, "⏳ **هذه الجلسة مشغولة** بردّ جارٍ.\n"
-                      "افتح جلسة أخرى أو أنشئ جديدة:",
-             kb([[{"text": "🆕 جلسة جديدة", "callback_data": "new"}],
-                 [{"text": "💬 جلسات المشروع", "callback_data": "sessions"}]]))
-        return
-
-    streamer = Streamer(TG, chat_id)
-    stop_event = start_typing(TG, chat_id)
-    set_busy(chat_id, True)
-
-    def on_perm(req):
-        PERM_SEQ[0] += 1
-        key = f"p{PERM_SEQ[0]}"
-        PERMS[key] = (sid, req.get("id"))
-        action = req.get("action") or "أداة"
-        rows = [[{"text": "✅ مرة واحدة", "callback_data": f"perm:{key}:once"},
-                 {"text": "♾️ دائمًا", "callback_data": f"perm:{key}:always"}],
-                [{"text": "⛔ رفض", "callback_data": f"perm:{key}:reject"}]]
-        send(chat_id, f"🔐 طلب إذن: {action}", kb(rows))
-
     try:
-        result = engine.stream(
-            text, session_id=sid, workdir=st["workdir"], model=st["model"],
-            on_delta=lambda t: streamer.update(t),
-            on_tool=lambda n, d: streamer.tool(n, d),
-            on_permission=on_perm,
-        )
-        body, error = result.text, result.error
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("opencode stream failed chat=%s", chat_id)
-        body, error = "", str(exc)
+        st = state.get(chat_id)
+        engine = get_engine("opencode")
+        sid = st["oc_session"]
+        if not sid:
+            try:
+                sid = engine.create_session(st["workdir"], "تيليجرام")
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("opencode create session failed chat=%s", chat_id)
+                send(chat_id, f"⚠️ تعذر إنشاء جلسة:\n{exc}")
+                return
+            state.update(chat_id, oc_session=sid)
+        if engine.is_active(sid):
+            send(chat_id, "⏳ **هذه الجلسة مشغولة** بردّ جارٍ.\n"
+                          "افتح جلسة أخرى أو أنشئ جديدة:",
+                 kb([[{"text": "🆕 جلسة جديدة", "callback_data": "new"}],
+                     [{"text": "💬 جلسات المشروع", "callback_data": "sessions"}]]))
+            return
+
+        streamer = Streamer(TG, chat_id)
+        stop_event = start_typing(TG, chat_id)
+
+        def on_perm(req):
+            key = permissions.request(sid, req.get("id"))
+            action = req.get("action") or "أداة"
+            rows = [[{"text": "✅ مرة واحدة", "callback_data": f"perm:{key}:once"},
+                     {"text": "♾️ دائمًا", "callback_data": f"perm:{key}:always"}],
+                    [{"text": "⛔ رفض", "callback_data": f"perm:{key}:reject"}]]
+            send(chat_id, f"🔐 طلب إذن: {action}", kb(rows))
+
+        try:
+            result = engine.stream(
+                text, session_id=sid, workdir=st["workdir"], model=st["model"],
+                on_delta=lambda t: streamer.update(t),
+                on_tool=lambda n, d: streamer.tool(n, d),
+                on_permission=on_perm,
+            )
+            body, error = result.text, result.error
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("opencode stream failed chat=%s", chat_id)
+            body, error = "", str(exc)
+        finally:
+            stop_event.set()
+        streamer.finish(body or (f"⚠️ {error}" if error else "(لا مخرجات)"))
     finally:
-        stop_event.set()
-        set_busy(chat_id, False)
-    streamer.finish(body or (f"⚠️ {error}" if error else "(لا مخرجات)"))
+        busy_guard.release(chat_id)
 
 
 # ---------- الأوامر ----------
@@ -282,7 +273,7 @@ def handle(chat_id, text):
             except Exception as exc:  # noqa: BLE001
                 send(chat_id, f"⚠️ {exc}")
                 return
-            ui.show_session(chat_id, registry.put({"sid": sid, "dir": st["workdir"]}))
+            ui.show_session(chat_id, callbacks.put({"sid": sid, "dir": st["workdir"]}))
         else:
             state.update(chat_id, session_id="")
             send(chat_id, "🧹 محادثة Qoder جديدة.")
@@ -334,7 +325,7 @@ def handle(chat_id, text):
             if not match:
                 send(chat_id, "لم أجد الجلسة. أرسل /sessions.")
                 return
-            ui.show_session(chat_id, registry.put({"sid": match[0]["id"],
+            ui.show_session(chat_id, callbacks.put({"sid": match[0]["id"],
                                                    "dir": st["workdir"]}))
             return
         sid = LAST_QODER.get(chat_id, {}).get(arg)
@@ -388,7 +379,7 @@ def handle(chat_id, text):
         ui.show_agents(chat_id)
         return
 
-    if is_busy(chat_id):
+    if not busy_guard.try_acquire(chat_id):
         send(chat_id, "⏳ فيه مهمة شغالة. أرسل /stop.")
         return
 
@@ -421,7 +412,7 @@ def handle_callback(cq):
         oc_ns = state.ns(chat_id, "opencode")
         sid = oc_ns.get("oc_session")
         if sid:
-            ui.show_session(chat_id, registry.put({"sid": sid, "dir": oc_ns["workdir"]}))
+            ui.show_session(chat_id, callbacks.put({"sid": sid, "dir": oc_ns["workdir"]}))
         else:
             send(chat_id, "لا جلسة OpenCode بعد.\n"
                           "🗂 المشاريع → اختر مشروعًا → 🆕 جلسة جديدة.", menu_kb())
@@ -449,7 +440,7 @@ def handle_callback(cq):
         idx = data.split(":", 1)[1]
         sid = LAST_OC.get(chat_id, {}).get(idx)
         if sid:
-            ui.show_session(chat_id, registry.put({"sid": sid, "dir": st["workdir"]}))
+            ui.show_session(chat_id, callbacks.put({"sid": sid, "dir": st["workdir"]}))
 
     elif data.startswith("cd:"):
         target = data.split(":", 1)[1]
@@ -472,7 +463,7 @@ def handle_callback(cq):
 
     elif data.startswith("perm:"):
         _, key, decision = data.split(":", 2)
-        entry = PERMS.pop(key, None)
+        entry = permissions.resolve(key)
         if not entry:
             send(chat_id, "انتهت صلاحية الطلب.")
             return
