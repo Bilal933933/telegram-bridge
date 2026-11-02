@@ -1,0 +1,23 @@
+# secrets & local config
+.env
+
+# runtime artifacts
+state.json
+bridge.log
+bridge.log.err
+bridge.pid
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# local session dumps
+qoder_history/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
