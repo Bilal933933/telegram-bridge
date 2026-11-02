@@ -9,8 +9,7 @@ import urllib.error
 
 import config
 import state
-from backends import opencode as oc
-from backends import qoder as qd
+from bridge.infrastructure.engines.registry import get as get_engine
 from bridge.infrastructure.telegram.client import Telegram
 from bridge.infrastructure.telegram.streamer import Streamer
 from bridge.infrastructure.telegram.typing_indicator import start_typing
@@ -121,7 +120,7 @@ def show_sessions(chat_id):
         ui.show_project(chat_id, registry.put({"dir": st["workdir"]}))
         return
 
-    items = qd.list_sessions(st["workdir"])
+    items = get_engine("qoder").list_sessions(st["workdir"])
     if not items:
         send(chat_id, f"لا توجد محادثات في:\n{st['workdir']}")
         return
@@ -151,7 +150,7 @@ def show_dirs(chat_id, path=None):
 
 def show_models(chat_id):
     st = state.get(chat_id)
-    models = qd.list_models(st["workdir"])
+    models = get_engine("qoder").list_models(st["workdir"])
     if not models:
         send(chat_id, "تعذر جلب النماذج.")
         return
@@ -168,7 +167,7 @@ def show_history(chat_id, limit=40):
     if not sid:
         send(chat_id, "لا جلسة Qoder مفتوحة — أرسل /sessions.")
         return
-    text = screens.history_entries(qd.read_messages(sid, limit))
+    text = screens.history_entries(get_engine("qoder").history(sid, limit))
     send(chat_id, text or "لا رسائل في هذه الجلسة بعد.")
 
 
@@ -176,15 +175,18 @@ def show_history(chat_id, limit=40):
 
 def ask_qoder(chat_id, text):
     st = state.get(chat_id)
+    engine = get_engine("qoder")
     streamer = Streamer(TG, chat_id)
     stop_event = start_typing(TG, chat_id)
     set_busy(chat_id, True)
     try:
-        body, sid, error = qd.stream(
-            text, st["session_id"], st["workdir"], st["model"],
+        result = engine.stream(
+            text, session_id=st["session_id"], workdir=st["workdir"],
+            model=st["model"],
             on_delta=lambda t: streamer.update(t),
             on_tool=lambda n, d: streamer.tool(n, d),
         )
+        body, sid, error = result.text, result.session_id, result.error
     except Exception as exc:  # noqa: BLE001
         logger.exception("qoder stream failed chat=%s", chat_id)
         body, sid, error = "", None, str(exc)
@@ -193,22 +195,23 @@ def ask_qoder(chat_id, text):
         set_busy(chat_id, False)
     if sid and sid != st["session_id"]:
         state.update(chat_id, session_id=sid)
-    qd.log_turn(sid or st["session_id"], text, body, error)
+    engine.log_turn(sid or st["session_id"], text, body, error)
     streamer.finish(body or (f"⚠️ {error}" if error else "(لا مخرجات)"))
 
 
 def ask_opencode(chat_id, text):
     st = state.get(chat_id)
+    engine = get_engine("opencode")
     sid = st["oc_session"]
     if not sid:
         try:
-            sid = oc.create("تيليجرام", st["workdir"])
+            sid = engine.create_session(st["workdir"], "تيليجرام")
         except Exception as exc:  # noqa: BLE001
             logger.exception("opencode create session failed chat=%s", chat_id)
             send(chat_id, f"⚠️ تعذر إنشاء جلسة:\n{exc}")
             return
         state.update(chat_id, oc_session=sid)
-    if oc.is_active(sid):
+    if engine.is_active(sid):
         send(chat_id, "⏳ **هذه الجلسة مشغولة** بردّ جارٍ.\n"
                       "افتح جلسة أخرى أو أنشئ جديدة:",
              kb([[{"text": "🆕 جلسة جديدة", "callback_data": "new"}],
@@ -230,12 +233,13 @@ def ask_opencode(chat_id, text):
         send(chat_id, f"🔐 طلب إذن: {action}", kb(rows))
 
     try:
-        body, error = oc.stream(
-            sid, text,
+        result = engine.stream(
+            text, session_id=sid, workdir=st["workdir"], model=st["model"],
             on_delta=lambda t: streamer.update(t),
             on_tool=lambda n, d: streamer.tool(n, d),
             on_permission=on_perm,
         )
+        body, error = result.text, result.error
     except Exception as exc:  # noqa: BLE001
         logger.exception("opencode stream failed chat=%s", chat_id)
         body, error = "", str(exc)
@@ -298,10 +302,10 @@ def handle(chat_id, text):
 
     if low == "/stop":
         if st["src"] == "opencode" and st["oc_session"]:
-            ok = oc.interrupt(st["oc_session"])
+            ok = get_engine("opencode").interrupt(st["oc_session"])
             send(chat_id, "🛑 أُرسل طلب الإيقاف." if ok else "لا توجد مهمة.")
         else:
-            ok = qd.stop()
+            ok = get_engine("qoder").interrupt()
             send(chat_id, "🛑 أُوقفت مهمة Qoder." if ok else "لا توجد مهمة.")
         return
 
@@ -322,7 +326,7 @@ def handle(chat_id, text):
             return
         if st["src"] == "opencode":
             try:
-                items = oc.sessions_in(st["workdir"], 20)
+                items = get_engine("opencode").sessions_in(st["workdir"], 20)
             except Exception:  # noqa: BLE001
                 items = []
             match = [it for it in items
@@ -335,7 +339,7 @@ def handle(chat_id, text):
             return
         sid = LAST_QODER.get(chat_id, {}).get(arg)
         if not sid:
-            items = qd.list_sessions(st["workdir"])
+            items = get_engine("qoder").list_sessions(st["workdir"])
             match = [it for it in items if str(it["index"]) == arg or it["id"].startswith(arg)]
             sid = match[0]["id"] if match else None
         if not sid:
@@ -368,7 +372,7 @@ def handle(chat_id, text):
         if not arg:
             show_models(chat_id)
             return
-        models = qd.list_models(st["workdir"])
+        models = get_engine("qoder").list_models(st["workdir"])
         match = [m for m in models if m.lower() == arg.lower()]
         if not match:
             send(chat_id, "❌ غير متاح:\n" + "\n".join(models))
@@ -437,7 +441,7 @@ def handle_callback(cq):
         if sid:
             state.update(chat_id, session_id=sid)
             send(chat_id, screens.qoder_card(state.get(chat_id), sid))
-            text = screens.history_entries(qd.read_messages(sid, 10))
+            text = screens.history_entries(get_engine("qoder").history(sid, 10))
             send(chat_id, ("📜 **آخر الرسائل**\n\n" + text) if text else
                  "📜 لا رسائل في هذه الجلسة بعد.")
 
@@ -474,7 +478,7 @@ def handle_callback(cq):
             return
         sid, rid = entry
         try:
-            oc.reply_permission(sid, rid, decision)
+            get_engine("opencode").reply_permission(sid, rid, decision)
             send(chat_id, f"✅ تم: {decision}")
         except Exception as exc:  # noqa: BLE001
             send(chat_id, f"⚠️ {exc}")

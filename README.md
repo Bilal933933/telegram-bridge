@@ -76,9 +76,10 @@ Or use the helper script (writes `bridge.log`, tracks the PID):
 bot.py              entry point: Telegram polling loop, routing, streaming, menu
 config.py           .env loader and defaults
 state.py            per-chat state in state.json (engine, workdir, session, model)
-opencode_api.py     small helper around the OpenCode REST API
 bridge/
   core/errors.py        BridgeError hierarchy (safe user message + technical detail)
+  core/models.py        shared models (SessionInfo, StreamResult, ...)
+  core/ports/agent_engine.py  AgentEngine protocol every engine implements
   shared/logging_setup.py  logging configuration (stdout, start-bridge.ps1 compatible)
   shared/error_boundary.py single error boundary: logs, notifies owner, never crashes a thread
   infrastructure/telegram/
@@ -86,15 +87,20 @@ bridge/
     client.py         Bot API calls: send / edit / action / answer
     streamer.py       live message editing of streamed replies
     typing_indicator.py  periodic "typing" action, stoppable via Event
+  infrastructure/engines/
+    registry.py       engine kind -> AgentEngine instance
+    opencode/http_client.py  `opencode api` calls (sessions, projects, models, permissions)
+    opencode/parser.py       message text/tool extraction
+    opencode/engine.py       OpenCodeEngine: polling stream + permission requests
+    qoder/cli_runner.py      run the Qoder CLI and parse its listings
+    qoder/history_log.py     transcript/history readers + local turn log
+    qoder/engine.py          QoderEngine: stream-json process + interrupt
   presentation/
     html_escape.py    the only place text is escaped for Telegram HTML
     markdown_to_html.py  Markdown -> Telegram HTML
     table_renderer.py    Markdown tables: monospace grid or per-row cards
     chunker.py        split long replies, keep code blocks/tables intact
     keyboards.py      inline keyboard builders
-backends/
-  opencode.py       OpenCode backend: sessions, models, agents, permission replies, streaming
-  qoder.py          Qoder CLI backend: subprocess streaming, session list, local history log
 engine/
   registry.py       short callback keys -> payloads with TTL
   projects.py       project/session listing for OpenCode

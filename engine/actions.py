@@ -1,8 +1,12 @@
 """أوامر وأزرار الشاشات: مشاريع ← مشروع ← جلسة، ووكلاء/نماذج/تاريخ."""
 import state
-from backends import opencode as oc
+from bridge.infrastructure.engines.registry import get as get_engine
 
 from . import lifecycle, projects, registry, screens
+
+
+def _engine():
+    return get_engine("opencode")
 
 _send = None
 _kb = None
@@ -81,7 +85,7 @@ def show_session(chat_id, key):
         return
     busy = lifecycle.busy(sid)
     try:
-        pending = len(oc.permissions(sid))
+        pending = len(_engine().permissions(sid))
     except Exception:  # noqa: BLE001
         pending = 0
     skey = registry.put({"sid": sid, "dir": data.get("dir"), "pkey": data.get("pkey")})
@@ -95,7 +99,7 @@ def show_session(chat_id, key):
         rows.append([{"text": "⬅ المشروع", "callback_data": f"pb:{data['pkey']}"}])
     _out(chat_id, screens.session_text(info, busy, pending), rows)
     try:
-        ctx = oc.context(sid)
+        ctx = _engine().context(sid)
         tail = screens.tail(ctx, 10)
         total = screens.talk_count(ctx)
     except Exception:  # noqa: BLE001
@@ -116,7 +120,7 @@ def show_history(chat_id, limit=40):
         return
     limit = limit or 100
     try:
-        ctx = oc.context(sid)
+        ctx = _engine().context(sid)
         text = screens.history(ctx, limit)
     except Exception as exc:  # noqa: BLE001
         _out(chat_id, f"⚠️ {exc}")
@@ -135,7 +139,7 @@ def show_agents(chat_id):
         _out(chat_id, "افتح جلسة أولًا (/sessions).")
         return
     try:
-        items = oc.agents(st["workdir"])
+        items = _engine().list_agents(st["workdir"])
     except Exception as exc:  # noqa: BLE001
         _out(chat_id, f"⚠️ {exc}")
         return
@@ -166,7 +170,7 @@ def show_models(chat_id, query=""):
         _out(chat_id, "افتح جلسة أولًا (/sessions).")
         return
     try:
-        items = oc.models()
+        items = _engine().list_model_details()
     except Exception as exc:  # noqa: BLE001
         _out(chat_id, f"⚠️ {exc}")
         return

@@ -1,16 +1,10 @@
 """المشاريع: قراءة المشاريع الحقيقية وجلسات كل مشروع."""
-from backends import opencode as oc
+from bridge.infrastructure.engines.registry import get as get_engine
 
 
 def list_projects(limit=12):
-    try:
-        return oc.projects(limit)
-    except Exception:  # noqa: BLE001
-        return []
+    return get_engine("opencode").list_projects(limit)
 
 
 def sessions(directory, limit=20):
-    try:
-        return oc.sessions_in(directory, limit)
-    except Exception:  # noqa: BLE001
-        return []
+    return get_engine("opencode").sessions_in(directory, limit)

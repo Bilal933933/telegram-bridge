@@ -2,7 +2,7 @@
 import os
 import time
 
-from backends import opencode as oc
+from bridge.infrastructure.engines.opencode.parser import text_of, tools_of
 
 
 def folder(path):
@@ -98,11 +98,11 @@ def _message_block(msg, with_tools=True):
         return f"👤 {body}" if body else ""
     if kind == "assistant":
         parts = []
-        body = oc.text_of(msg)
+        body = text_of(msg)
         if body:
             parts.append(f"🤖 {body}")
         if with_tools:
-            tools = oc.tools_of(msg)
+            tools = tools_of(msg)
             for name in tools[:4]:
                 parts.append(f"⚙ {name}")
             if len(tools) > 4:
@@ -144,7 +144,7 @@ def tail(ctx, limit=10, max_len=700):
         return "\n\n".join(blocks)
     names = []
     for msg in reversed(msgs):
-        names = oc.tools_of(msg) + names
+        names = tools_of(msg) + names
         if len(names) >= 3:
             break
     return ("⚙ آخر الأدوات: " + "، ".join(names[-3:])) if names else ""
