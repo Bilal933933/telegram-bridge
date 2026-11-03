@@ -18,6 +18,10 @@ from bridge.application.commands import (
 from bridge.application.commands import help as help_cmd
 from bridge.application.commands import switch_engine
 
+# الشاشات التي يمكن لـ /menu إعادة عرضها (لا المنتقيات المؤقتة).
+_SCREEN_EXACT = frozenset({"ph", "sessions", "card"})
+_SCREEN_PREFIXES = ("pr:", "ps:", "pb:")
+
 
 class CallbackRouter:
     def __init__(self):
@@ -37,13 +41,21 @@ class CallbackRouter:
     def dispatch(self, ctx, chat_id, data):
         handler = self._exact.get(data)
         if handler:
+            self._remember(ctx, chat_id, data)
             handler(ctx, chat_id)
             return True
         for prefix, handler in self._prefixes:
             if data.startswith(prefix):
+                self._remember(ctx, chat_id, data)
                 handler(ctx, chat_id, data[len(prefix):])
                 return True
         return False
+
+    @staticmethod
+    def _remember(ctx, chat_id, data):
+        """يحفظ الشاشات فقط (لا منتقيات الوكيل/النموذج) ليعيدها /menu."""
+        if data in _SCREEN_EXACT or data.startswith(_SCREEN_PREFIXES):
+            ctx.screens.set(chat_id, data)
 
 
 def _permission(ctx, chat_id, rest):

@@ -8,6 +8,7 @@ from bridge.application.commands import (
     agent,
     change_dir,
     history,
+    menu,
     model,
     new_session,
     open_session,
@@ -19,6 +20,13 @@ from bridge.application.commands import (
     switch_engine,
 )
 from bridge.application.commands import help as help_cmd
+from bridge.presentation.keyboards import (
+    LBL_MENU,
+    LBL_NEW,
+    LBL_PROJECTS,
+    LBL_SESSIONS,
+    LBL_STATUS,
+)
 
 
 @dataclass(frozen=True)
@@ -56,6 +64,16 @@ class CommandRouter:
             text.split(" ", 1)[1].strip()
 
 
+# أزرار اللوحة الثابتة ترسل نصها كرسالة → نطابقها كأمر.
+MENU_BUTTONS = (
+    (LBL_PROJECTS, projects.run),
+    (LBL_SESSIONS, sessions.run),
+    (LBL_NEW, new_session.run),
+    (LBL_MENU, menu.run),
+    (LBL_STATUS, status.run),
+)
+
+
 def _exact(*names):
     return lambda low, text: low in names
 
@@ -65,10 +83,15 @@ def _prefixed(name):
     return lambda low, text: low == name or low.startswith(name + " ")
 
 
+def _button(label):
+    return lambda low, text: low == label.lower()
+
+
 def build_command_router():
     """كل سطر أمر → معالجه، وما لا يطابق يُمرّر كرسالة حرّة."""
     router = CommandRouter([
-        Command("/help", _exact("/start", "/help", "/menu"), help_cmd.run),
+        Command("/help", _exact("/start", "/help"), help_cmd.run),
+        Command("/menu", _exact("/menu", "/buttons"), menu.run),
         Command("/src", _prefixed("/src"), switch_engine.run),
         Command("/projects", _exact("/projects"), projects.run),
         Command("/sessions", _exact("/sessions"), sessions.run),
@@ -80,6 +103,7 @@ def build_command_router():
         Command("/cd", _prefixed("/cd"), change_dir.run),
         Command("/model", _prefixed("/model"), model.run),
         Command("/agent", _exact("/agent"), agent.run),
+        *[Command(label, _button(label), handler) for label, handler in MENU_BUTTONS],
     ])
     router.set_fallback(prompt.run)
     return router

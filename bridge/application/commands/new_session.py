@@ -12,6 +12,7 @@ def run(ctx, chat_id, arg=""):
             return
         ctx.messenger.send(chat_id, f"✅ **جلسة جديدة** في {screens.folder(st['workdir'])}\n"
                                     f"🆔 `{sid}`\n\nأرسل رسالتك الأولى.")
+        ctx.screens.set(chat_id, "card")
         return
     ctx.state.update(chat_id, session_id="")
     ctx.messenger.send(chat_id, "🧹 محادثة Qoder جديدة.")
@@ -28,3 +29,4 @@ def from_project(ctx, chat_id, key):
         return
     ctx.messenger.send(chat_id, f"✅ **جلسة جديدة** في {screens.folder(directory)}\n"
                                 f"🆔 `{sid}`\n\nأرسل رسالتك الأولى.")
+    ctx.screens.set(chat_id, "card")

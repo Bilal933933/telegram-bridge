@@ -1,5 +1,12 @@
 """لوحات الأزرار (reply_markup) — كائن بلا حالة يُمرَّر في السياق."""
 
+# نصوص أزرار اللوحة الثابتة: تُطابق كأوامر في الموجّه، فتبقى في مكان واحد.
+LBL_PROJECTS = "🗂 المشاريع"
+LBL_SESSIONS = "💬 الجلسات"
+LBL_NEW = "🆕 جلسة"
+LBL_MENU = "🧭 الأزرار"
+LBL_STATUS = "ℹ️ الحالة"
+
 
 class Keyboards:
     def kb(self, rows):
@@ -16,3 +23,15 @@ class Keyboards:
             [{"text": "ℹ️ الحالة", "callback_data": "status"},
              {"text": "❓ مساعدة", "callback_data": "help"}],
         ])
+
+    def main_menu(self):
+        """لوحة ثابتة أسفل المحادثة تبقى ظاهرة بعد إرسالها."""
+        return {
+            "keyboard": [
+                [{"text": LBL_PROJECTS}, {"text": LBL_SESSIONS}],
+                [{"text": LBL_NEW}, {"text": LBL_MENU}],
+                [{"text": LBL_STATUS}],
+            ],
+            "resize_keyboard": True,
+            "is_persistent": True,
+        }

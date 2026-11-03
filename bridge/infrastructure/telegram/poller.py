@@ -17,10 +17,8 @@ def _chat_id(callback_query):
 
 
 class TelegramPoller:
-    def __init__(self, ctx, commands, callbacks):
+    def __init__(self, ctx):
         self._ctx = ctx
-        self._commands = commands
-        self._callbacks = callbacks
 
     def run(self):
         offset = 0
@@ -57,14 +55,14 @@ class TelegramPoller:
         self._spawn(chat_id, self._on_message, chat_id, text)
 
     def _on_message(self, chat_id, text):
-        self._commands.dispatch(self._ctx, chat_id, text)
+        self._ctx.command_router.dispatch(self._ctx, chat_id, text)
 
     def _on_callback(self, query):
         chat_id = _chat_id(query)
         self._ctx.tg.answer(query.get("id"))
         if chat_id != self._ctx.owner:
             return
-        self._callbacks.dispatch(self._ctx, chat_id, query.get("data") or "")
+        self._ctx.callback_router.dispatch(self._ctx, chat_id, query.get("data") or "")
 
     def _spawn(self, chat_id, handler, *args):
         threading.Thread(

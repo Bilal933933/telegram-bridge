@@ -56,7 +56,8 @@ Or use the helper script (writes `bridge.log`, tracks the PID):
 
 | Command | Action |
 |---|---|
-| `/start`, `/help`, `/menu` | Main menu |
+| `/start`, `/help` | Main menu + the persistent bottom keyboard |
+| `/menu`, `/buttons` | Re-send the buttons of the screen you are on (session / project / projects list), else the default menu |
 | `/src [qoder\|opencode]` | Switch engine (each engine keeps its own dir/session) |
 | `/projects` | List OpenCode projects |
 | `/sessions` | List sessions/chat history for the current engine |
@@ -90,6 +91,7 @@ bridge/
     services/prompt_runner.py   run a prompt on the active engine + stream the reply
     services/busy_guard.py      atomic per-chat "task running" lock
     services/permission_broker.py tool permission requests with TTL
+    services/screen_tracker.py  last screen per chat, replayed by /menu
   infrastructure/
     telegram/transport.py   HTTP to api.telegram.org, incl. IP fallback when DNS is blocked
     telegram/client.py      Bot API calls: send / edit / action / answer
@@ -118,5 +120,7 @@ tests/              unit tests (unittest; mypy --strict config in pyproject.toml
 ## Notes
 
 - Only `ALLOWED_ID` can talk to the bot; other chats are ignored.
+- The bottom keyboard (`/start`, `/help`) is persistent: its labels are routed as commands, never sent to the engine as a prompt.
+- `/menu` replays the last screen opened from the buttons (`projects`, `sessions`, `card`, `pr:`, `ps:`, `pb:`) with fresh data; if nothing is tracked it falls back to the session card, then projects, then help.
 - `state.json`, `bridge.log`, `bridge.pid` and `.env` are runtime/secret files and are git-ignored.
 - Table rendering assumes a monospace font on the client (Telegram uses one inside `pre` blocks).

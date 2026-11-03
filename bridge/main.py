@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import config
-from bridge.application.callback_router import build_callback_router
-from bridge.application.command_router import build_command_router
 from bridge.container import Context
 from bridge.infrastructure.telegram.client import Telegram
 from bridge.infrastructure.telegram.poller import TelegramPoller
@@ -18,7 +16,7 @@ def main() -> int:
         return 1
     log.info("بدء البوت | owner=%s | dir=%s", config.OWNER, config.DEFAULT_DIR)
     ctx = Context(Telegram(config.TOKEN), config.OWNER)
-    TelegramPoller(ctx, build_command_router(), build_callback_router()).run()
+    TelegramPoller(ctx).run()
     return 0
 
 

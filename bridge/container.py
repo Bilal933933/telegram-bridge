@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import config
+from bridge.application.callback_router import build_callback_router
+from bridge.application.command_router import build_command_router
 from bridge.application.services.busy_guard import BusyGuard
 from bridge.application.services.permission_broker import PermissionBroker
 from bridge.application.services.prompt_runner import PromptRunner
+from bridge.application.services.screen_tracker import ScreenTracker
 from bridge.application.session_service import ProjectService, SessionService
 from bridge.infrastructure.engines.registry import get as get_engine
 from bridge.infrastructure.persistence.json_state_repository import JsonStateRepository
@@ -33,12 +36,15 @@ class Context:
         self.busy = BusyGuard()
         self.permissions = PermissionBroker()
         self.callbacks = CallbackRegistry()
+        self.screens = ScreenTracker()
         self.boundary = ErrorBoundary(self._notify_owner)
         self.engines = Engines()
         self.sessions = SessionService(self.state, self.engines.get)
         self.projects = ProjectService(self.engines.get)
         self.keyboards = Keyboards()
         self.runner = PromptRunner(self)
+        self.command_router = build_command_router()
+        self.callback_router = build_callback_router()
 
     def _notify_owner(self, chat_id, text):
         """إشعار الأخطاء للمالك فقط."""
