@@ -23,6 +23,7 @@ from bridge.presentation.keyboards import (
     LBL_SESSIONS,
     LBL_STATUS,
 )
+from bridge.shared.callback_registry import CallbackRegistry
 
 
 class ScreenTrackerTests(unittest.TestCase):
@@ -101,6 +102,21 @@ class RouterTableTests(unittest.TestCase):
         self.assertTrue(match(LBL_PROJECTS.lower(), LBL_PROJECTS))
         self.assertFalse(match("/projects", "/projects"))
         self.assertEqual(len(MENU_BUTTONS), 5)
+
+
+class MenuValidityTests(unittest.TestCase):
+    def test_unkeyed_screens_are_always_valid(self) -> None:
+        ctx = SimpleNamespace(callbacks=CallbackRegistry())
+        self.assertTrue(menu._valid(ctx, "ph"))
+        self.assertTrue(menu._valid(ctx, "card"))
+
+    def test_keyed_screen_dies_with_its_key(self) -> None:
+        registry = CallbackRegistry()
+        ctx = SimpleNamespace(callbacks=registry)
+        key = registry.put({"sid": "s1"})
+        self.assertTrue(menu._valid(ctx, f"ps:{key}"))
+        registry.drop(key)
+        self.assertFalse(menu._valid(ctx, f"ps:{key}"))
 
 
 class CallbackRouterMemoryTests(unittest.TestCase):
