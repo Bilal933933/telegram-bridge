@@ -23,11 +23,20 @@ class PromptRunner:
             return
         st = self.ctx.state.get(chat_id)
         target = self._run_opencode if st["src"] == "opencode" else self._run_qoder
+        thread_id = self.ctx.delivery.current()
         threading.Thread(
-            target=self.ctx.boundary.run,
-            args=(chat_id, functools.partial(target, chat_id, text)),
+            target=self._guarded,
+            args=(chat_id, thread_id, functools.partial(target, chat_id, text)),
             daemon=True,
         ).start()
+
+    def _guarded(self, chat_id, thread_id, action):
+        """يعيد تثبيت وجهة الطلب (خاص/موضوع) داخل الخيط الجديد."""
+        self.ctx.delivery.begin(thread_id)
+        try:
+            self.ctx.boundary.run(chat_id, action)
+        finally:
+            self.ctx.delivery.clear()
 
     # ---------- المحرّكان ----------
 
@@ -77,8 +86,9 @@ class PromptRunner:
 
     def _stream(self, chat_id, engine, sid, text, with_permissions=False):
         st = self.ctx.state.get(chat_id)
-        streamer = Streamer(self.ctx.tg, chat_id)
-        stop_typing = start_typing(self.ctx.tg, chat_id)
+        chat, thread = self.ctx.delivery.target(chat_id)
+        streamer = Streamer(self.ctx.tg, chat, thread_id=thread)
+        stop_typing = start_typing(self.ctx.tg, chat, thread_id=thread)
 
         def on_perm(req):
             key = self.ctx.permissions.request(sid, req.get("id"))

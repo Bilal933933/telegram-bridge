@@ -27,7 +27,8 @@ def run(ctx, chat_id, key, with_tail=True):
     ]
     if data.get("pkey"):
         rows.append([{"text": "⬅ المشروع", "callback_data": f"pb:{data['pkey']}"}])
-    ctx.messenger.send(chat_id, screens.session_text(info, busy, pending),
+    ctx.messenger.send(chat_id, screens.session_text(info, busy, pending,
+                                                     ctx.topics.link(sid)),
                        ctx.keyboards.kb(rows))
     if not with_tail:
         return

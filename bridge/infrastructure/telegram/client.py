@@ -57,8 +57,10 @@ class Telegram:
             time.sleep(1)
         return {}
 
-    def send(self, chat_id, text, kb=None, html=True):
+    def send(self, chat_id, text, kb=None, html=True, thread_id=None):
         params = {"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"}
+        if thread_id:
+            params["message_thread_id"] = thread_id
         if html:
             params["parse_mode"] = "HTML"
         if kb:
@@ -83,11 +85,19 @@ class Telegram:
             params["text"] = plain(text)
             self.call("editMessageText", **params)
 
-    def action(self, chat_id, action="typing"):
+    def action(self, chat_id, action="typing", thread_id=None):
+        params = {"chat_id": chat_id, "action": action}
+        if thread_id:
+            params["message_thread_id"] = thread_id
         try:
-            self.call("sendChatAction", chat_id=chat_id, action=action)
+            self.call("sendChatAction", **params)
         except Exception:  # noqa: BLE001
             pass
+
+    def create_topic(self, chat_id, name):
+        """ينشئ موضوعًا في مجموعة Topic-enabled ويعيد message_thread_id."""
+        res = self.call("createForumTopic", chat_id=chat_id, name=name[:128])
+        return (res.get("result") or {}).get("message_thread_id")
 
     def answer(self, callback_id, text=None):
         try:

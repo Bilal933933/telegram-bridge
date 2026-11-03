@@ -11,7 +11,7 @@ def run(ctx, chat_id, arg=""):
             ctx.messenger.send(chat_id, f"⚠️ {exc}")
             return
         ctx.messenger.send(chat_id, f"✅ **جلسة جديدة** في {screens.folder(st['workdir'])}\n"
-                                    f"🆔 `{sid}`\n\nأرسل رسالتك الأولى.")
+                                    f"🆔 `{sid}`{_topic(ctx, sid)}\n\nأرسل رسالتك الأولى.")
         ctx.screens.set(chat_id, "card")
         return
     ctx.state.update(chat_id, session_id="")
@@ -28,5 +28,10 @@ def from_project(ctx, chat_id, key):
         ctx.messenger.send(chat_id, f"⚠️ تعذر إنشاء الجلسة:\n{exc}")
         return
     ctx.messenger.send(chat_id, f"✅ **جلسة جديدة** في {screens.folder(directory)}\n"
-                                f"🆔 `{sid}`\n\nأرسل رسالتك الأولى.")
+                                f"🆔 `{sid}`{_topic(ctx, sid)}\n\nأرسل رسالتك الأولى.")
     ctx.screens.set(chat_id, "card")
+
+
+def _topic(ctx, sid):
+    link = ctx.topics.link(sid)
+    return f"\n📂 الموضوع: {link}" if link else ""

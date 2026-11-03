@@ -3,6 +3,7 @@
 
 # runtime artifacts
 state.json
+topics.json
 bridge.log
 bridge.log.err
 bridge.pid

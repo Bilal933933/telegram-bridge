@@ -92,7 +92,7 @@ def project_text(directory, sessions):
     return "\n".join(lines)
 
 
-def session_text(info, is_busy, pending=0):
+def session_text(info, is_busy, pending=0, topic_link=""):
     model = (info.get("model") or {})
     tokens = info.get("tokens") or {}
     cache = (tokens.get("cache") or {}).get("read") or 0
@@ -109,6 +109,8 @@ def session_text(info, is_busy, pending=0):
         f"💰 ${float(info.get('cost') or 0):.4f} · {state_str}",
         f"🕒 آخر تحديث {clock((info.get('time') or {}).get('updated'))}",
     ]
+    if topic_link:
+        lines.append(f"📂 الموضوع: {topic_link}")
     if pending:
         lines.append(f"🔐 **{pending} طلب إذن معلّق**")
     return "\n".join(lines)

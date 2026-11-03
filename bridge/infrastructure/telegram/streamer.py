@@ -8,9 +8,10 @@ from bridge.presentation.markdown_to_html import to_html
 
 
 class Streamer:
-    def __init__(self, tg, chat_id):
+    def __init__(self, tg, chat_id, thread_id=None):
         self.tg = tg
         self.chat_id = chat_id
+        self.thread_id = thread_id
         self.ids = []
         self.last = 0.0
         self.tool_msg = None
@@ -30,7 +31,7 @@ class Streamer:
                 if idx == len(htmls) - 1 or force:
                     self.tg.edit(self.chat_id, self.ids[idx], body)
             else:
-                mid = self.tg.send(self.chat_id, body)
+                mid = self.tg.send(self.chat_id, body, thread_id=self.thread_id)
                 if mid:
                     self.ids.append(mid)
 
@@ -40,7 +41,7 @@ class Streamer:
         recent = "\n".join(self.tools[-3:])
         body = f"<pre>{esc(recent)}</pre>"
         if self.tool_msg is None:
-            self.tool_msg = self.tg.send(self.chat_id, body)
+            self.tool_msg = self.tg.send(self.chat_id, body, thread_id=self.thread_id)
         else:
             self.tg.edit(self.chat_id, self.tool_msg, body)
 
@@ -53,6 +54,6 @@ class Streamer:
             if idx < len(self.ids):
                 self.tg.edit(self.chat_id, self.ids[idx], body, kb=markup)
             else:
-                mid = self.tg.send(self.chat_id, body, kb=markup)
+                mid = self.tg.send(self.chat_id, body, kb=markup, thread_id=self.thread_id)
                 if mid:
                     self.ids.append(mid)

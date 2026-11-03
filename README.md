@@ -29,6 +29,7 @@ cp .env.example .env
 |---|---|
 | `BOT_TOKEN` | Telegram bot token |
 | `ALLOWED_ID` | Numeric Telegram user id allowed to use the bot (owner) |
+| `GROUP_CHAT_ID` | Optional: supergroup with Topics enabled where each session gets its own topic. `0` = keep everything in the private chat (can also be set with `/setup` in the group) |
 | `QODER_DIR` | Default working directory |
 | `QODER_BIN` | Path/filename of the Qoder executable |
 | `QODER_PERMISSION_MODE` | Qoder permission mode (default `accept_edits`) |
@@ -69,7 +70,26 @@ Or use the helper script (writes `bridge.log`, tracks the PID):
 | `/history [n]` | Show last messages |
 | `/stop` | Interrupt the running task |
 | `/status` | Engine, workdir, busy state |
+| `/setup` | Inside the Topics supergroup: bind this group, so every new session opens its own topic |
 | any other text | Sent to the active engine as a prompt |
+
+## Topics (one Telegram thread per session)
+
+The bot cannot create new private chats or groups, so the closest equivalent is a **supergroup with Topics enabled**:
+each OpenCode session becomes its own forum topic, with its own replies and streaming messages.
+
+One-time manual setup (the bot cannot do this part):
+
+1. Create a group and enable **Topics** in its settings.
+2. Add the bot as an **admin** with the *Manage Topics* permission.
+3. Send `/setup` inside the group — or put the group id in `GROUP_CHAT_ID` in `.env`.
+
+Behaviour once configured:
+
+- Creating or opening a session creates its topic (`📁 <project> · <id suffix>`) and the session card shows a link to it.
+- Messages, callbacks and streamed replies sent inside a topic stay in that topic, and are bound to that topic's session.
+- Prompts sent in the private chat stay in the private chat and use the private chat's active session.
+- If `TopicService.ensure` fails (Topics disabled, missing permission) it logs a warning and returns nothing — sessions keep working in the private chat.
 
 ## Structure
 
@@ -86,9 +106,11 @@ bridge/
   application/
     command_router.py       slash commands -> handlers table (fallback = prompt)
     callback_router.py      inline-button data -> handlers table
-    session_service.py      SessionService / ProjectService over OpenCode
+    session_service.py      SessionService / ProjectService over OpenCode (+ per-session topic)
     commands/               one file per command (help, status, projects, sessions, ...)
     services/prompt_runner.py   run a prompt on the active engine + stream the reply
+    services/delivery.py        reply destination: the private chat or the originating topic
+    services/topic_service.py   session <-> forum topic: create, resolve, link
     services/busy_guard.py      atomic per-chat "task running" lock
     services/permission_broker.py tool permission requests with TTL
     services/screen_tracker.py  last screen per chat, replayed by /menu
@@ -102,6 +124,7 @@ bridge/
     engines/opencode/...    OpenCodeEngine: sessions, projects, models, permissions
     engines/qoder/...       QoderEngine: stream-json process, history, interrupt
     persistence/json_state_repository.py  JSON state file, atomic writes
+    persistence/topic_store.py            topics.json: group id + thread -> session map
   presentation/
     messenger.py      send text: escape + chunk + attach keyboard
     screens.py        message rendering for projects, sessions, cards, history
@@ -122,5 +145,5 @@ tests/              unit tests (unittest; mypy --strict config in pyproject.toml
 - Only `ALLOWED_ID` can talk to the bot; other chats are ignored.
 - The bottom keyboard (`/start`, `/help`) is persistent: its labels are routed as commands, never sent to the engine as a prompt.
 - `/menu` replays the last screen opened from the buttons (`projects`, `sessions`, `card`, `pr:`, `ps:`, `pb:`) with fresh data; if nothing is tracked it falls back to the session card, then projects, then help.
-- `state.json`, `bridge.log`, `bridge.pid` and `.env` are runtime/secret files and are git-ignored.
+- `state.json`, `topics.json`, `bridge.log`, `bridge.pid` and `.env` are runtime/secret files and are git-ignored.
 - Table rendering assumes a monospace font on the client (Telegram uses one inside `pre` blocks).

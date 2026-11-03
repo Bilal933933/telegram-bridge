@@ -5,12 +5,15 @@ import config
 from bridge.application.callback_router import build_callback_router
 from bridge.application.command_router import build_command_router
 from bridge.application.services.busy_guard import BusyGuard
+from bridge.application.services.delivery import Delivery
 from bridge.application.services.permission_broker import PermissionBroker
 from bridge.application.services.prompt_runner import PromptRunner
 from bridge.application.services.screen_tracker import ScreenTracker
+from bridge.application.services.topic_service import TopicService
 from bridge.application.session_service import ProjectService, SessionService
 from bridge.infrastructure.engines.registry import get as get_engine
 from bridge.infrastructure.persistence.json_state_repository import JsonStateRepository
+from bridge.infrastructure.persistence.topic_store import TopicStore
 from bridge.presentation.keyboards import Keyboards
 from bridge.presentation.messenger import Messenger
 from bridge.shared.callback_registry import CallbackRegistry
@@ -28,18 +31,20 @@ class Engines:
 class Context:
     """كل تبعيات طبقة التطبيق: تُبنى مرة واحدة وتُحقن في كل معالج."""
 
-    def __init__(self, tg, owner, state_path=None):
+    def __init__(self, tg, owner, state_path=None, topics_path=None):
         self.tg = tg
         self.owner = owner
-        self.messenger = Messenger(tg)
+        self.topics = TopicService(tg, TopicStore(topics_path), config.GROUP_CHAT_ID)
+        self.delivery = Delivery(lambda: self.topics.group)
+        self.messenger = Messenger(tg, self.delivery)
         self.state = JsonStateRepository(state_path)
         self.busy = BusyGuard()
         self.permissions = PermissionBroker()
         self.callbacks = CallbackRegistry()
-        self.screens = ScreenTracker()
+        self.screens = ScreenTracker(scope=lambda: self.delivery.current())
         self.boundary = ErrorBoundary(self._notify_owner)
         self.engines = Engines()
-        self.sessions = SessionService(self.state, self.engines.get)
+        self.sessions = SessionService(self.state, self.engines.get, self.topics)
         self.projects = ProjectService(self.engines.get)
         self.keyboards = Keyboards()
         self.runner = PromptRunner(self)

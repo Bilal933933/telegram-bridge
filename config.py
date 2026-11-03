@@ -24,6 +24,8 @@ _CFG = _load()
 
 TOKEN = _CFG.get("BOT_TOKEN", "")
 OWNER = int(_CFG.get("ALLOWED_ID", "0") or 0)
+# مجموعة الموضوعات (Topics): كل جلسة OpenCode في موضوع مستقل. 0 = معطّل.
+GROUP_CHAT_ID = int(_CFG.get("GROUP_CHAT_ID", "0") or 0)
 
 DEFAULT_DIR = _CFG.get("QODER_DIR", str(BASE))
 QODER = _CFG.get("QODER_BIN", "qoder")
