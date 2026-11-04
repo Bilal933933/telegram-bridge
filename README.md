@@ -59,9 +59,9 @@ Or use the helper script (writes `bridge.log`, tracks the PID):
 |---|---|
 | `/start`, `/help` | Main menu + the persistent bottom keyboard |
 | `/menu`, `/buttons` | Re-send the buttons of the screen you are on (session / project / projects list), else the default menu |
-| `/src [qoder\|opencode]` | Switch engine (each engine keeps its own dir/session) |
-| `/projects` | List OpenCode projects |
-| `/sessions` | List sessions/chat history for the current engine |
+| `/src [qoder\|opencode]` | Switch engine; the confirmation shows only the active engine |
+| `/projects`, 🗂 | List the **active** engine's projects (OpenCode projects or Qoder work dirs from `~/.qoder/projects`) |
+| `/sessions`, 💬 | List the **active** engine's sessions in the current work dir |
 | `/open <n>` | Open session by index or id prefix |
 | `/new` | Start a new session/conversation |
 | `/cd [path]` | Change working directory (browse if no path) |
@@ -69,7 +69,7 @@ Or use the helper script (writes `bridge.log`, tracks the PID):
 | `/agent` | Pick an agent (OpenCode) |
 | `/history [n]` | Show last messages |
 | `/stop` | Interrupt the running task |
-| `/status` | Engine, workdir, busy state |
+| `/status` | Active engine, workdir, busy state |
 | `/setup` | Inside the Topics supergroup: bind this group, so every new session opens its own topic |
 | any other text | Sent to the active engine as a prompt |
 
@@ -106,7 +106,7 @@ bridge/
   application/
     command_router.py       slash commands -> handlers table (fallback = prompt)
     callback_router.py      inline-button data -> handlers table
-    session_service.py      SessionService / ProjectService over OpenCode (+ per-session topic)
+    session_service.py      SessionService (OpenCode) + engine-aware ProjectService
     commands/               one file per command (help, status, projects, sessions, ...)
     services/prompt_runner.py   run a prompt on the active engine + stream the reply
     services/delivery.py        reply destination: the private chat or the originating topic
@@ -122,7 +122,8 @@ bridge/
     telegram/typing_indicator.py  periodic "typing" action, stoppable via Event
     engines/registry.py     engine kind -> AgentEngine instance
     engines/opencode/...    OpenCodeEngine: sessions, projects, models, permissions
-    engines/qoder/...       QoderEngine: stream-json process, history, interrupt
+    engines/qoder/...       QoderEngine: stream-json process, history, interrupt,
+                            projects.py (work dirs from ~/.qoder/projects)
     persistence/json_state_repository.py  JSON state file, atomic writes
     persistence/topic_store.py            topics.json: group id + thread -> session map
   presentation/
@@ -145,5 +146,7 @@ tests/              unit tests (unittest; mypy --strict config in pyproject.toml
 - Only `ALLOWED_ID` can talk to the bot; other chats are ignored.
 - The bottom keyboard (`/start`, `/help`) is persistent: its labels are routed as commands, never sent to the engine as a prompt.
 - `/menu` replays the last screen opened from the buttons (`projects`, `sessions`, `card`, `pr:`, `ps:`, `pb:`) with fresh data; if nothing is tracked it falls back to the session card, then projects, then help.
+- Screens never mix engines: `/projects`, `/sessions`, `/status` and the `/src` confirmation read the **active** engine only, through the capability flags on the `AgentEngine` port (`supports_projects`, `rich_cards`). Adding an engine = one registry entry plus those flags.
+- History screens (`/history`, the session-card tail, Qoder transcripts) label the speaker: `👤 أنت` with the text quoted, `🤖 الوكيل` with the reply as normal Markdown.
 - `state.json`, `topics.json`, `bridge.log`, `bridge.pid` and `.env` are runtime/secret files and are git-ignored.
 - Table rendering assumes a monospace font on the client (Telegram uses one inside `pre` blocks).

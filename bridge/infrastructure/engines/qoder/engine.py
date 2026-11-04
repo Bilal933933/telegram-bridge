@@ -8,14 +8,15 @@ import subprocess
 import config
 from bridge.core.errors import EngineError
 from bridge.core.models import StreamResult
-from bridge.infrastructure.engines.qoder import cli_runner, history_log
+from bridge.infrastructure.engines.qoder import cli_runner, history_log, projects
 
 
 class QoderEngine:
     kind = "qoder"
-    supports_projects = False
+    supports_projects = True
     supports_agents = False
     supports_permissions = False
+    rich_cards = False
 
     def __init__(self):
         self._proc = None
@@ -25,6 +26,18 @@ class QoderEngine:
     def list_sessions(self, workdir, limit=20):
         _, out, err = cli_runner.run(["--list-sessions", "-w", workdir])
         return cli_runner.parse_sessions(out + "\n" + err)[:limit]
+
+    def list_projects(self, limit=15):
+        return projects.list_projects(limit)
+
+    def sessions_in(self, directory, limit=20):
+        """جلسات مجلد عمل: عناوين CLI + وقت آخر تعديل من ملفات Qoder."""
+        items = self.list_sessions(directory, limit)
+        times = projects.session_times(directory)
+        for item in items:
+            item["dir"] = directory
+            item["updated"] = times.get(item["id"], 0)
+        return items
 
     def create_session(self, workdir, title):
         raise EngineError("Qoder لا ينشئ جلسات مسبقًا — أرسل رسالة لتبدأ محادثة.")

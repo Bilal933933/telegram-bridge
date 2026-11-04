@@ -1,24 +1,33 @@
-"""قائمة جلسات المحرّك النشط."""
-from bridge.application.commands import project_view
+"""قائمة جلسات المحرّك النشط (OpenCode أو Qoder أو أي محرّك آخر)."""
 from bridge.presentation import screens
 
 
 def run(ctx, chat_id, arg=""):
     st = ctx.state.get(chat_id)
-    if st["src"] == "opencode":
-        project_view.run(ctx, chat_id, ctx.callbacks.put({"dir": st["workdir"]}))
-        return
-
-    items = ctx.engines.get("qoder").list_sessions(st["workdir"])
+    directory = st["workdir"]
+    items = ctx.projects.sessions(chat_id, directory, 20)
     if not items:
-        ctx.messenger.send(chat_id, f"لا توجد محادثات في:\n{st['workdir']}")
+        ctx.messenger.send(chat_id,
+                           f"لا توجد جلسات في {screens.folder(directory)} "
+                           f"({screens.engine_label(st['src'])}).")
         return
     rows = []
-    for it in items[:10]:
-        key = ctx.callbacks.put({"sid": it["id"], "engine": "qoder"})
-        rows.append([{"text": f"{it['index']}. {it['title'][:34]}",
-                      "callback_data": f"open:{key}"}])
-    ctx.messenger.send(chat_id, f"محادثات Qoder ({len(items)}):", ctx.keyboards.kb(rows))
+    for i, s in enumerate(items[:10], 1):
+        rows.append([{"text": f"{i}. {s['title'][:34]}",
+                      "callback_data": _open_button(ctx, chat_id, directory, s)}])
+    ctx.messenger.send(chat_id,
+                       f"💬 **جلسات {screens.folder(directory)}** · "
+                       f"{screens.engine_label(st['src'])} — {len(items)}",
+                       ctx.keyboards.kb(rows))
+
+
+def _open_button(ctx, chat_id, directory, session):
+    """بطاقة جلسة كاملة للمحرّكات الغنية، وفتح مباشر لغيرها."""
+    sid = session["id"]
+    if ctx.projects.rich_cards(chat_id):
+        return f"ps:{ctx.callbacks.put({'sid': sid, 'dir': directory})}"
+    engine = ctx.projects.active(chat_id)
+    return f"open:{ctx.callbacks.put({'sid': sid, 'dir': directory, 'engine': engine})}"
 
 
 def open_index(ctx, chat_id, index):
@@ -32,8 +41,12 @@ def open_index(ctx, chat_id, index):
     open_by_id(ctx, chat_id, match[0]["id"])
 
 
-def open_by_id(ctx, chat_id, sid):
-    ctx.state.update(chat_id, session_id=sid)
+def open_by_id(ctx, chat_id, sid, directory=None):
+    changes = {"src": "qoder", "session_id": sid}
+    if directory:
+        changes["workdir"] = directory
+        changes["project"] = directory
+    ctx.state.update(chat_id, **changes)
     ctx.messenger.send(chat_id, screens.qoder_card(ctx.state.get(chat_id), sid))
     text = screens.history_entries(ctx.engines.get("qoder").history(sid, 10))
     ctx.messenger.send(chat_id, ("📜 **آخر الرسائل**\n\n" + text) if text else

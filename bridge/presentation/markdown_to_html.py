@@ -54,6 +54,15 @@ def to_html(md):
             out.append(render_table(block))
             i = ranges[i]
             continue
+        if line.startswith(">"):
+            quote = []
+            while i < len(lines) and lines[i].startswith(">"):
+                quote.append(inline(re.sub(r"^>\s?", "", lines[i])))
+                i += 1
+            body = "\n".join(quote).strip()
+            if body:
+                out.append(f"<blockquote>{body}</blockquote>")
+            continue
         out.append(inline(line))
         i += 1
     if in_code:

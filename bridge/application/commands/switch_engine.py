@@ -9,7 +9,9 @@ def run(ctx, chat_id, arg=""):
     if arg in ENGINES:
         ctx.state.switch(chat_id, arg)
         summary = ctx.state.summary(chat_id)
-        ctx.messenger.send(chat_id, f"✅ المحرّك: **{arg}**\n\n{screens.engines_text(summary)}",
+        ctx.messenger.send(chat_id,
+                           f"✅ المحرّك: **{screens.engine_label(arg)}**\n"
+                           f"{screens.active_engine_text(summary, arg)}",
                            ctx.keyboards.menu_kb())
         return
     st = ctx.state.get(chat_id)

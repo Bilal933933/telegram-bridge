@@ -47,43 +47,73 @@ def clock(ms):
 
 # ---------- الشاشات ----------
 
+ENGINE_LABELS = {"opencode": "OpenCode", "qoder": "Qoder"}
+
+
+def engine_label(engine):
+    return ENGINE_LABELS.get(engine, engine or "—")
+
+
+def _engine_bits(item, engine):
+    """سطر محرّك واحد: المجلد، آخر جلسة، النموذج."""
+    sid = item.get("oc_session") or item.get("session_id")
+    bits = [f"**{engine_label(engine)}**", f"📁 {folder(item['workdir'])}"]
+    bits.append(f"💬 {sid[-8:] if sid else '—'}")
+    if item.get("model"):
+        bits.append(f"🧠 {item['model']}")
+    return bits
+
+
+def engine_names(summary):
+    """أسماء المحرّكات كما في ملخّص الحالة (بلا افتراض نوع معيّن)."""
+    return [key for key, value in summary.items()
+            if key != "active" and isinstance(value, dict)]
+
+
 def engines_text(summary):
     """سطران: آخر جلسة في كل محرّك، والنشط معلَّم."""
     lines = []
-    for engine, label in (("opencode", "OpenCode"), ("qoder", "Qoder")):
-        item = summary[engine]
-        sid = item.get("oc_session") if engine == "opencode" else item.get("session_id")
+    for engine in engine_names(summary):
         mark = "▶️" if summary["active"] == engine else "▫️"
-        bits = [f"{mark} **{label}**", f"📁 {folder(item['workdir'])}"]
-        bits.append(f"💬 {sid[-8:] if sid else '—'}")
-        if item.get("model"):
-            bits.append(f"🧠 {item['model']}")
-        lines.append(" · ".join(bits))
+        lines.append(" · ".join([mark] + _engine_bits(summary[engine], engine)))
     return "\n".join(lines)
 
 
+def active_engine_text(summary, engine):
+    """سطر المحرّك النشط وحده (رسالة تأكيد التبديل)."""
+    return " · ".join(["✅"] + _engine_bits(summary[engine], engine))
+
+
 def engine_picker(st, summary, name_qoder="Qoder"):
-    return (f"🔌 **المحرّك الحالي:** {st['src']}\n\n"
+    return (f"🔌 **المحرّك الحالي:** {engine_label(st['src'])}\n\n"
             f"{engines_text(summary)}\n\n"
             "• OpenCode — مشاريع وجلسات وبطاقة حالة\n"
-            f"• {name_qoder} — CLI مباشر بلا مشاريع\n"
+            f"• {name_qoder} — مشاريع ومحادثات محلية\n"
             "كل محرّك يحتفظ بمجلده وجلسته.")
 
 
-def projects_text(items):
-    lines = [f"🗂 **المشاريع** — {len(items)}", ""]
+def projects_text(items, engine=""):
+    title = f"🗂 **المشاريع** — {len(items)}" + (f" · {engine_label(engine)}" if engine else "")
+    lines = [title, ""]
     for p in items[:10]:
-        git = " · git" if p.get("vcs") else ""
-        lines.append(f"• **{folder(p['dir'])}**{git} · {ago(p['active'])}")
+        bits = [f"• **{folder(p['dir'])}**"]
+        if p.get("vcs"):
+            bits.append("git")
+        if p.get("sessions"):
+            bits.append(f"{p['sessions']} جلسة")
+        bits.append(ago(p["active"]))
+        lines.append(" · ".join(bits))
         lines.append(f"   `{p['dir']}`")
     return "\n".join(lines)
 
 
-def project_text(directory, sessions):
+def project_text(directory, sessions, engine=""):
     git = _git_branch(directory)
-    lines = [f"📁 **{folder(directory)}**",
-             f"`{directory}`",
-             f"{'🌿 ' + git if git else '📄 بلا git'} · 💬 {len(sessions)} جلسة", ""]
+    head = [f"📁 **{folder(directory)}**", f"`{directory}`"]
+    if engine:
+        head.append(f"🔌 {engine_label(engine)}")
+    head.extend([f"{'🌿 ' + git if git else '📄 بلا git'} · 💬 {len(sessions)} جلسة", ""])
+    lines = head
     if not sessions:
         lines.append("لا توجد جلسات بعد — أنشئ واحدة.")
     else:
@@ -116,16 +146,21 @@ def session_text(info, is_busy, pending=0, topic_link=""):
     return "\n".join(lines)
 
 
+def quote(text):
+    """يحوّل نصًا إلى اقتباس Markdown (كل سطر بعلامة >)."""
+    return "\n".join("> " + line if line.strip() else ">" for line in text.split("\n"))
+
+
 def _message_block(msg, with_tools=True):
     kind = msg.get("type")
     if kind == "user":
         body = (msg.get("text") or "").strip()
-        return f"👤 {body}" if body else ""
+        return f"👤 **أنت**\n{quote(body)}" if body else ""
     if kind == "assistant":
         parts = []
         body = text_of(msg)
         if body:
-            parts.append(f"🤖 {body}")
+            parts.append(f"🤖 **الوكيل**\n{body}")
         if with_tools:
             tools = tools_of(msg)
             for name in tools[:4]:
@@ -181,9 +216,12 @@ def history_entries(entries, limit=40):
     blocks = []
     for item in items:
         text = (item.get("text") or "").strip()
-        if text:
-            icon = "👤" if item.get("role") == "user" else "🤖"
-            blocks.append(f"{icon} {text}")
+        if not text:
+            continue
+        if item.get("role") == "user":
+            blocks.append(f"👤 **أنت**\n{quote(text)}")
+        else:
+            blocks.append(f"🤖 **الوكيل**\n{text}")
     return "\n\n".join(blocks)
 
 

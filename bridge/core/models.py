@@ -27,6 +27,7 @@ class ProjectInfo(TypedDict, total=False):
     dir: str
     vcs: str
     active: float
+    sessions: int
 
 
 class ModelInfo(TypedDict, total=False):

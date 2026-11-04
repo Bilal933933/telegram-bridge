@@ -24,6 +24,7 @@ class OpenCodeEngine:
     supports_projects = True
     supports_agents = True
     supports_permissions = True
+    rich_cards = True
 
     def __init__(self, client=None):
         self.client = client or OpenCodeClient()

@@ -1,5 +1,6 @@
 """فتح جلسة: OpenCode بالمعرّف، أو Qoder برقم المحادثة."""
 from bridge.application.commands import session_view, sessions
+from bridge.presentation import screens
 
 
 def run(ctx, chat_id, arg=""):
@@ -28,12 +29,20 @@ def from_key(ctx, chat_id, key):
     if not sid:
         ctx.messenger.send(chat_id, "انتهت صلاحية القائمة — أرسل /sessions.")
         return
-    sessions.open_by_id(ctx, chat_id, sid)
+    sessions.open_by_id(ctx, chat_id, sid, data.get("dir"))
 
 
 def card(ctx, chat_id):
     """زر «بطاقة الجلسة» من القائمة الرئيسية."""
     st = ctx.state.get(chat_id)
+    if not ctx.projects.rich_cards(chat_id):
+        if st["session_id"]:
+            sessions.open_by_id(ctx, chat_id, st["session_id"], st["workdir"])
+        else:
+            ctx.messenger.send(chat_id, f"لا جلسة {screens.engine_label(st['src'])} بعد.\n"
+                                        "🗂 المشاريع → اختر مشروعًا → اختر جلسة.",
+                               ctx.keyboards.menu_kb())
+        return
     sid = st["oc_session"]
     if not sid:
         ctx.messenger.send(chat_id, "لا جلسة OpenCode بعد.\n"

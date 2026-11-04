@@ -61,14 +61,36 @@ class SessionService:
 
 
 class ProjectService:
-    def __init__(self, engine_get):
+    """مشاريع وجلسات المحرّك النشط مهما كان نوعه (القدرات تحدد المتاح)."""
+
+    def __init__(self, state, engine_get):
+        self._state = state
         self._engine = engine_get
 
-    def list_projects(self, limit=12):
-        return self._engine("opencode").list_projects(limit)
+    def active(self, chat_id):
+        return self._state.get(chat_id)["src"]
 
-    def sessions(self, directory, limit=20):
-        return self._engine("opencode").sessions_in(directory, limit)
+    def engine(self, chat_id):
+        return self._engine(self.active(chat_id))
+
+    def list_projects(self, chat_id, limit=12):
+        engine = self.engine(chat_id)
+        if not getattr(engine, "supports_projects", False):
+            return []
+        try:
+            return engine.list_projects(limit)
+        except Exception:  # noqa: BLE001 — قائمة فارغة أفضل من شاشة خطأ
+            return []
+
+    def sessions(self, chat_id, directory, limit=20):
+        engine = self.engine(chat_id)
+        try:
+            return engine.sessions_in(directory, limit)
+        except Exception:  # noqa: BLE001
+            return []
+
+    def rich_cards(self, chat_id):
+        return bool(getattr(self.engine(chat_id), "rich_cards", False))
 
     def workdir_default(self):
         return config.DEFAULT_DIR

@@ -9,7 +9,7 @@ def run(ctx, chat_id, arg=""):
              {"text": "🗂 المشاريع", "callback_data": "ph"}]]
     ctx.messenger.send(
         chat_id,
-        f"🔌 **المحرّك النشط:** {st['src']} · {busy}\n\n"
-        f"{screens.engines_text(ctx.state.summary(chat_id))}",
+        f"🔌 **المحرّك النشط:** {screens.engine_label(st['src'])} · {busy}\n\n"
+        f"{screens.active_engine_text(ctx.state.summary(chat_id), st['src'])}",
         ctx.keyboards.kb(rows),
     )

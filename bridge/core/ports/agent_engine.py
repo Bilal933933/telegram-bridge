@@ -24,6 +24,7 @@ class AgentEngine(Protocol):
     supports_projects: bool
     supports_agents: bool
     supports_permissions: bool
+    rich_cards: bool  # بطاقة جلسة كاملة (حالة/رموز/تكلفة) مقابل بطاقة مبسّطة
 
     def list_sessions(self, workdir: str, limit: int = 20) -> list[SessionInfo]:
         """جلسات مساحة عمل معيّنة، الأحدث أولًا."""

@@ -16,7 +16,7 @@ def run(ctx, chat_id, arg=""):
     if ctx.state.get(chat_id)["oc_session"]:
         open_session.card(ctx, chat_id)
         return
-    if _has_projects(ctx):
+    if _has_projects(ctx, chat_id):
         projects.run(ctx, chat_id)
         return
     help_cmd.run(ctx, chat_id)
@@ -30,8 +30,8 @@ def _valid(ctx, data):
     return True
 
 
-def _has_projects(ctx):
+def _has_projects(ctx, chat_id):
     try:
-        return bool(ctx.projects.list_projects(1))
+        return bool(ctx.projects.list_projects(chat_id, 1))
     except Exception:  # noqa: BLE001 — تعذّر القراءة يعني لا شاشة مشاريع
         return False

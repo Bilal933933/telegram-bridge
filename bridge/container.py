@@ -45,7 +45,7 @@ class Context:
         self.boundary = ErrorBoundary(self._notify_owner)
         self.engines = Engines()
         self.sessions = SessionService(self.state, self.engines.get, self.topics)
-        self.projects = ProjectService(self.engines.get)
+        self.projects = ProjectService(self.state, self.engines.get)
         self.keyboards = Keyboards()
         self.runner = PromptRunner(self)
         self.command_router = build_command_router()
