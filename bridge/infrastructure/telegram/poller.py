@@ -39,7 +39,10 @@ class TelegramPoller:
                 continue
             for update in res.get("result", []):
                 offset = update["update_id"] + 1
-                self._route(update)
+                try:
+                    self._route(update)
+                except Exception:  # noqa: BLE001 — تحديث واحد لا يوقف الحلقة
+                    _log.exception("update error id=%s", update.get("update_id"))
 
     # ---------- التوجيه ----------
 
@@ -74,7 +77,10 @@ class TelegramPoller:
         message = query.get("message") or {}
         chat = message.get("chat") or {}
         thread_id = message.get("message_thread_id")
-        self._ctx.tg.answer(query.get("id"))
+        try:  # إغلاق «جارٍ التنفيذ» ليس حرجًا: فشله لا يوقف التوجيه
+            self._ctx.tg.answer(query.get("id"))
+        except Exception:  # noqa: BLE001
+            _log.warning("answer failed")
         if _sender(query) != self._ctx.owner:
             return
         if chat.get("id") == self._ctx.owner:
